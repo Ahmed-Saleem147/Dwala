@@ -301,6 +301,17 @@
     #screen-report { display: block !important; }
   }
 
+/* ── ADMIN NAV BUTTON ──────────────────────────────── */
+.admin-nav-btn {
+  margin-left:8px; padding:7px 14px; border-radius:20px;
+  border:2px solid rgba(255,255,255,0.6); background:rgba(255,255,255,0.15);
+  color:#fff; font-size:13px; font-weight:700; cursor:pointer;
+  letter-spacing:0.3px; transition:background .2s, border-color .2s;
+  white-space:nowrap;
+}
+.admin-nav-btn:hover { background:rgba(255,255,255,0.3); border-color:#fff; }
+.admin-nav-btn.admin-active { background:#16A34A; border-color:#16A34A; }
+.admin-nav-btn.admin-active:hover { background:#15803d; }
 /* ── BOSS UNIT PHOTOS ─────────────────────────────── */
 .boss-unit-section { margin-bottom:2px; }
 .boss-unit-photos {
@@ -374,6 +385,7 @@ body.viewer-mode .upload-card { display:none !important; }
     <button class="main-tab" data-screen="boss" onclick="showScreen('boss')">Boss View</button>
     <button class="main-tab" data-screen="photos" onclick="showScreen('photos')">Photos</button>
   </div>
+  <button id="admin-nav-btn" class="admin-nav-btn" onclick="showAdminModal()">&#128274; Admin</button>
 </nav>
 <div id="viewer-banner" style="display:none;background:#F97316;color:#fff;text-align:center;padding:7px 12px;font-size:13px;font-weight:600;letter-spacing:0.5px;">
   👁 VIEW ONLY MODE — You are not logged in as admin
@@ -1143,16 +1155,25 @@ function openPhotoLightbox(src) {
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 var SESSION_ADMIN = false;
-var ADMIN_PIN = '1234'; // <-- Change this to your preferred PIN
+var ADMIN_PIN = '1234'; // change this to your PIN
+
+function showAdminModal() {
+  document.getElementById('auth-pin').value = '';
+  document.getElementById('auth-error').style.display = 'none';
+  document.getElementById('auth-modal').style.display = 'flex';
+  setTimeout(function() { document.getElementById('auth-pin').focus(); }, 50);
+}
+
+function closeAdminModal() {
+  document.getElementById('auth-modal').style.display = 'none';
+}
 
 function checkPin() {
   var entered = document.getElementById('auth-pin').value;
   if (entered === ADMIN_PIN) {
     SESSION_ADMIN = true;
-    document.getElementById('auth-modal').style.display = 'none';
-    document.body.classList.remove('viewer-mode');
-    document.getElementById('viewer-banner').style.display = 'none';
-    renderDashboard();
+    closeAdminModal();
+    applyViewerMode(false);
   } else {
     document.getElementById('auth-error').style.display = 'block';
     document.getElementById('auth-pin').value = '';
@@ -1160,31 +1181,45 @@ function checkPin() {
   }
 }
 
-function viewOnly() {
+function adminLogout() {
   SESSION_ADMIN = false;
-  document.getElementById('auth-modal').style.display = 'none';
-  document.body.classList.add('viewer-mode');
-  document.getElementById('viewer-banner').style.display = 'block';
-  renderDashboard();
+  applyViewerMode(true);
+}
+
+function applyViewerMode(isViewer) {
+  var btn = document.getElementById('admin-nav-btn');
+  if (isViewer) {
+    document.body.classList.add('viewer-mode');
+    document.getElementById('viewer-banner').style.display = 'block';
+    if (btn) { btn.innerHTML = '&#128274; Admin'; btn.className = 'admin-nav-btn'; btn.onclick = function() { showAdminModal(); }; }
+  } else {
+    document.body.classList.remove('viewer-mode');
+    document.getElementById('viewer-banner').style.display = 'none';
+    if (btn) { btn.innerHTML = '&#128275; Admin &#10003;'; btn.className = 'admin-nav-btn admin-active'; btn.onclick = function() { if (confirm('Log out of admin mode?')) adminLogout(); }; }
+  }
 }
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 window.addEventListener('load', function() {
-  document.getElementById('auth-modal').style.display = 'flex';
-  document.getElementById('auth-pin').addEventListener('keyup', function(e) { if (e.key === 'Enter') checkPin(); });
+  applyViewerMode(true);
+  renderDashboard();
+  var pin = document.getElementById('auth-pin');
+  if (pin) pin.addEventListener('keyup', function(e) { if (e.key === 'Enter') checkPin(); });
+  var modal = document.getElementById('auth-modal');
+  if (modal) modal.addEventListener('click', function(e) { if (e.target === modal) closeAdminModal(); });
 });
 </script>
 
 <!-- AUTH MODAL -->
 <div id="auth-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.65);backdrop-filter:blur(8px);align-items:center;justify-content:center;">
   <div class="auth-card">
-    <div class="auth-logo">🏗️</div>
-    <div class="auth-title">Dwala Site Manager</div>
-    <div class="auth-sub">Enter your PIN to edit, or view in read-only mode.</div>
-    <input id="auth-pin" type="password" inputmode="numeric" placeholder="Enter PIN" maxlength="8" class="auth-input" autocomplete="off">
+    <div class="auth-logo">&#128274;</div>
+    <div class="auth-title">Admin Login</div>
+    <div class="auth-sub">Enter your PIN to unlock editing.</div>
+    <input id="auth-pin" type="password" inputmode="numeric" placeholder="&#9679;&#9679;&#9679;&#9679;" maxlength="8" class="auth-input" autocomplete="off">
     <div id="auth-error" style="display:none;color:#DC2626;font-size:12px;margin-top:-8px;text-align:center;">Incorrect PIN. Try again.</div>
-    <button class="auth-btn-primary" onclick="checkPin()">🔓 Login as Admin</button>
-    <button class="auth-btn-secondary" onclick="viewOnly()">👁 View Only</button>
+    <button class="auth-btn-primary" onclick="checkPin()">&#128275; Unlock</button>
+    <button class="auth-btn-secondary" onclick="closeAdminModal()">Cancel</button>
   </div>
 </div></body>
 </html>
