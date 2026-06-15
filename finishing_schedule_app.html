@@ -300,6 +300,67 @@
     .screen { display: none !important; }
     #screen-report { display: block !important; }
   }
+
+/* ── BOSS UNIT PHOTOS ─────────────────────────────── */
+.boss-unit-section { margin-bottom:2px; }
+.boss-unit-photos {
+  display:flex; gap:8px; padding:8px 12px 10px;
+  overflow-x:auto; background:rgba(255,248,242,0.55);
+  border-bottom:1px solid rgba(249,115,22,0.12);
+}
+.boss-unit-photos::-webkit-scrollbar { height:4px; }
+.boss-unit-photos::-webkit-scrollbar-thumb { background:var(--orange-dim); border-radius:2px; }
+.boss-unit-photo-item { flex:0 0 auto; text-align:center; }
+.boss-unit-photo-thumb {
+  width:72px; height:72px; object-fit:cover;
+  border-radius:6px; border:2px solid var(--orange);
+  cursor:zoom-in; transition:transform .15s;
+}
+.boss-unit-photo-thumb:hover { transform:scale(1.07); }
+.boss-unit-photo-label {
+  font-size:9.5px; color:var(--text-mid); margin-top:3px;
+  max-width:72px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+
+/* ── AUTH MODAL ────────────────────────────────────── */
+.auth-card {
+  background:#fff; border-radius:20px; padding:36px 32px 28px;
+  box-shadow:0 24px 64px rgba(0,0,0,0.35);
+  display:flex; flex-direction:column; gap:14px;
+  min-width:300px; max-width:360px; width:90%;
+}
+.auth-logo { font-size:40px; text-align:center; }
+.auth-title { font-size:20px; font-weight:700; color:var(--text); text-align:center; }
+.auth-sub { font-size:13px; color:var(--text-mid); text-align:center; line-height:1.4; margin-top:-4px; }
+.auth-input {
+  border:2px solid #e5e5e5; border-radius:10px;
+  padding:12px 14px; font-size:16px; outline:none;
+  text-align:center; letter-spacing:4px; color:var(--text);
+  transition:border-color .2s;
+}
+.auth-input:focus { border-color:var(--orange); }
+.auth-btn-primary {
+  background:var(--orange); color:#fff; border:none;
+  border-radius:10px; padding:13px; font-size:15px; font-weight:700;
+  cursor:pointer; transition:background .2s;
+}
+.auth-btn-primary:hover { background:var(--orange-dim); }
+.auth-btn-secondary {
+  background:none; color:var(--text-mid); border:2px solid #e5e5e5;
+  border-radius:10px; padding:11px; font-size:14px; font-weight:600;
+  cursor:pointer; transition:border-color .2s, color .2s;
+}
+.auth-btn-secondary:hover { border-color:var(--orange); color:var(--orange); }
+
+/* ── VIEWER MODE ───────────────────────────────────── */
+body.viewer-mode .status-select,
+body.viewer-mode .pct-input,
+body.viewer-mode .remarks-input,
+body.viewer-mode .blocker-input { pointer-events:none; opacity:0.6; }
+body.viewer-mode .photo-label-btn,
+body.viewer-mode .photo-remove,
+body.viewer-mode .daily-photo-del,
+body.viewer-mode .upload-card { display:none !important; }
 </style>
 </head>
 <body>
@@ -314,6 +375,9 @@
     <button class="main-tab" data-screen="photos" onclick="showScreen('photos')">Photos</button>
   </div>
 </nav>
+<div id="viewer-banner" style="display:none;background:#F97316;color:#fff;text-align:center;padding:7px 12px;font-size:13px;font-weight:600;letter-spacing:0.5px;">
+  👁 VIEW ONLY MODE — You are not logged in as admin
+</div>
 
 <!-- DASHBOARD -->
 <div id="screen-dashboard" class="screen active">
@@ -959,39 +1023,55 @@ function renderReport() {
 }
 
 // ─── BOSS VIEW ────────────────────────────────────────────────────────────────
+function getUnitPhotos(uid) {
+  var photos = [];
+  TRADES.forEach(function(t) {
+    STATE[uid][t.key].forEach(function(task) {
+      if (task.photo) photos.push({ src: task.photo, label: t.label + ' · ' + task.name });
+    });
+  });
+  return photos;
+}
+
 function renderBossView() {
-  document.getElementById('boss-date').textContent='As of '+fmtDate(new Date());
-  const aP=blockPct('A'),bP=blockPct('B'),total=(aP+bP)/2;
-  document.getElementById('boss-total-pct').textContent=Math.round(total*100)+'%';
-  document.getElementById('boss-a-pct').textContent=Math.round(aP*100)+'%';
-  document.getElementById('boss-b-pct').textContent=Math.round(bP*100)+'%';
-  document.getElementById('boss-blocks').innerHTML=['A','B'].map(bl=>{
-    const units=Object.keys(STATE).filter(u=>u.startsWith(bl));
-    return `<div class="boss-card">
-      <div class="boss-card-title">Block ${bl} — Unit Breakdown</div>
-      ${units.map(uid=>{
-        const pct=unitPct(uid), p=Math.round(pct*100);
-        const cls=p>=75?'high':p>=30?'mid':'low';
-        return `<div class="boss-unit-row">
-          <div class="boss-unit-name">${uid}</div>
-          <div class="boss-unit-bar"><div class="tape-wrap"><div class="tape-track"><div class="tape-fill" style="width:${p}%"></div></div></div></div>
-          <div class="boss-pct ${cls}">${p}%</div>
-        </div>`;
-      }).join('')}
-    </div>`;
+  document.getElementById('boss-date').textContent = 'As of ' + fmtDate(new Date());
+  var aP = blockPct('A'), bP = blockPct('B'), total = (aP + bP) / 2;
+  document.getElementById('boss-total-pct').textContent = Math.round(total * 100) + '%';
+  document.getElementById('boss-a-pct').textContent = Math.round(aP * 100) + '%';
+  document.getElementById('boss-b-pct').textContent = Math.round(bP * 100) + '%';
+  document.getElementById('boss-blocks').innerHTML = ['A','B'].map(function(bl) {
+    var units = Object.keys(STATE).filter(function(u) { return u.startsWith(bl); });
+    var html = '<div class="boss-card"><div class="boss-card-title">Block ' + bl + ' — Unit Breakdown</div>';
+    units.forEach(function(uid) {
+      var pct = unitPct(uid), p = Math.round(pct * 100);
+      var cls = p >= 75 ? 'high' : p >= 30 ? 'mid' : 'low';
+      var photos = getUnitPhotos(uid);
+      html += '<div class="boss-unit-section"><div class="boss-unit-row">';
+      html += '<div class="boss-unit-name">' + uid + '</div>';
+      html += '<div class="boss-unit-bar"><div class="tape-wrap"><div class="tape-track"><div class="tape-fill" style="width:' + p + '%"></div></div></div></div>';
+      html += '<div class="boss-pct ' + cls + '">' + p + '%</div>';
+      html += '</div>';
+      if (photos.length) {
+        html += '<div class="boss-unit-photos">';
+        photos.forEach(function(ph) {
+          html += '<div class="boss-unit-photo-item"><img class="boss-unit-photo-thumb" src="' + ph.src + '" onclick="openPhotoLightbox(this.src)"><div class="boss-unit-photo-label">' + escHtml(ph.label) + '</div></div>';
+        });
+        html += '</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+    return html;
   }).join('');
-  const blockers=allBlockers();
-  document.getElementById('boss-blockers').innerHTML=blockers.length
-    ? blockers.map(b=>`<div class="blocker-item"><div class="blocker-item-unit">⚠ ${b.unit} — ${b.trade} › ${b.task}</div><div class="blocker-item-text">${b.text}</div></div>`).join('')
+  var blockers = allBlockers();
+  document.getElementById('boss-blockers').innerHTML = blockers.length
+    ? blockers.map(function(b) { return '<div class="blocker-item"><div class="blocker-item-unit">⚠ ' + b.unit + ' — ' + b.trade + ' › ' + b.task + '</div><div class="blocker-item-text">' + b.text + '</div></div>'; }).join('')
     : '<div style="color:var(--text-dim);font-size:13px;padding:8px 0">No active blockers.</div>';
 }
 
-// ─── INIT ─────────────────────────────────────────────────────────────────────
-function openPhotoLightbox(src){document.getElementById('lightbox-img').src=src;document.getElementById('lightbox').classList.add('show');}
-
-// ─── DAILY PHOTOS ────────────────────────────────────────────────────────────
-let DAILY_PHOTOS = [];
-try { const _dp = localStorage.getItem('dwala_daily_photos'); DAILY_PHOTOS = _dp ? JSON.parse(_dp) : []; } catch(e) { DAILY_PHOTOS = []; }
+// ─── DAILY PHOTOS ─────────────────────────────────────────────────────────────
+var DAILY_PHOTOS = [];
+try { var _dp = localStorage.getItem('dwala_daily_photos'); DAILY_PHOTOS = _dp ? JSON.parse(_dp) : []; } catch(e) { DAILY_PHOTOS = []; }
 
 function saveDailyPhotos() {
   try { localStorage.setItem('dwala_daily_photos', JSON.stringify(DAILY_PHOTOS)); }
@@ -999,20 +1079,20 @@ function saveDailyPhotos() {
 }
 
 function handleDailyUpload(input) {
-  const dateVal = document.getElementById('dp-date').value || new Date().toISOString().split('T')[0];
-  const cap = document.getElementById('dp-caption').value.trim();
-  const files = Array.from(input.files);
+  var dateVal = document.getElementById('dp-date').value || new Date().toISOString().split('T')[0];
+  var cap = document.getElementById('dp-caption').value.trim();
+  var files = Array.from(input.files);
   if (!files.length) return;
-  let done = 0;
+  var done = 0;
   files.forEach(function(file) {
-    const reader = new FileReader();
+    var reader = new FileReader();
     reader.onload = function(e) {
       DAILY_PHOTOS.unshift({ id: Date.now().toString(36) + Math.random().toString(36).slice(2), date: dateVal, caption: cap || file.name, src: e.target.result });
       done++;
       if (done === files.length) {
         saveDailyPhotos(); renderPhotos();
         input.value = ''; document.getElementById('dp-caption').value = '';
-        const t = document.getElementById('save-toast'); t.classList.add('show'); setTimeout(function(){ t.classList.remove('show'); }, 1800);
+        var t = document.getElementById('save-toast'); t.classList.add('show'); setTimeout(function() { t.classList.remove('show'); }, 1800);
       }
     };
     reader.readAsDataURL(file);
@@ -1021,42 +1101,90 @@ function handleDailyUpload(input) {
 
 function deleteDailyPhoto(id) {
   if (!confirm('Remove this photo?')) return;
-  DAILY_PHOTOS = DAILY_PHOTOS.filter(function(p){ return p.id !== id; });
+  DAILY_PHOTOS = DAILY_PHOTOS.filter(function(p) { return p.id !== id; });
   saveDailyPhotos(); renderPhotos();
 }
 
 function openDailyPhoto(id) {
-  const p = DAILY_PHOTOS.find(function(x){ return x.id === id; });
+  var p = DAILY_PHOTOS.find(function(x) { return x.id === id; });
   if (p) openPhotoLightbox(p.src);
 }
 
 function renderPhotos() {
-  const el = document.getElementById('daily-gallery'); if (!el) return;
-  const dpDate = document.getElementById('dp-date'); if (dpDate && !dpDate.value) dpDate.value = new Date().toISOString().split('T')[0];
+  var el = document.getElementById('daily-gallery'); if (!el) return;
+  var dpDate = document.getElementById('dp-date'); if (dpDate && !dpDate.value) dpDate.value = new Date().toISOString().split('T')[0];
   if (!DAILY_PHOTOS.length) {
     el.innerHTML = '<div class="photos-empty"><div class="photos-empty-icon">📷</div>No site photos yet.<br>Use the form above to start your daily photo log.</div>';
     return;
   }
-  const byDate = {};
-  DAILY_PHOTOS.forEach(function(p){ if (!byDate[p.date]) byDate[p.date] = []; byDate[p.date].push(p); });
-  const dates = Object.keys(byDate).sort(function(a,b){ return b.localeCompare(a); });
+  var byDate = {};
+  DAILY_PHOTOS.forEach(function(p) { if (!byDate[p.date]) byDate[p.date] = []; byDate[p.date].push(p); });
+  var dates = Object.keys(byDate).sort(function(a, b) { return b.localeCompare(a); });
   el.innerHTML = dates.map(function(date) {
-    const photos = byDate[date];
-    const label = new Date(date + 'T12:00:00').toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+    var photos = byDate[date];
+    var label = new Date(date + 'T12:00:00').toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
     return '<div class="section-title">' + label + ' <span style="font-weight:400;letter-spacing:0;text-transform:none;color:var(--text-dim)">— ' + photos.length + ' photo' + (photos.length !== 1 ? 's' : '') + '</span></div>' +
       '<div class="daily-photo-grid">' +
       photos.map(function(p) {
         return '<div class="daily-photo-card">' +
           '<img class="daily-photo-img" src="' + p.src + '" onclick="openDailyPhoto(\'' + p.id + '\')" alt="' + escHtml(p.caption) + '">' +
-          '<div class="daily-photo-footer">' +
-          '<span class="daily-photo-cap">' + escHtml(p.caption) + '</span>' +
-          '<button class="daily-photo-del" onclick="deleteDailyPhoto(\'' + p.id + '\')" title="Remove photo">✕</button>' +
+          '<div class="daily-photo-footer"><span class="daily-photo-cap">' + escHtml(p.caption) + '</span>' +
+          '<button class="daily-photo-del" onclick="deleteDailyPhoto(\'' + p.id + '\')" title="Remove">✕</button>' +
           '</div></div>';
-      }).join('') +
-      '</div>';
+      }).join('') + '</div>';
   }).join('');
 }
-renderDashboard();
+
+// ─── LIGHTBOX HELPER ──────────────────────────────────────────────────────────
+function openPhotoLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('show');
+}
+
+// ─── AUTH ─────────────────────────────────────────────────────────────────────
+var SESSION_ADMIN = false;
+var ADMIN_PIN = '1234'; // <-- Change this to your preferred PIN
+
+function checkPin() {
+  var entered = document.getElementById('auth-pin').value;
+  if (entered === ADMIN_PIN) {
+    SESSION_ADMIN = true;
+    document.getElementById('auth-modal').style.display = 'none';
+    document.body.classList.remove('viewer-mode');
+    document.getElementById('viewer-banner').style.display = 'none';
+    renderDashboard();
+  } else {
+    document.getElementById('auth-error').style.display = 'block';
+    document.getElementById('auth-pin').value = '';
+    document.getElementById('auth-pin').focus();
+  }
+}
+
+function viewOnly() {
+  SESSION_ADMIN = false;
+  document.getElementById('auth-modal').style.display = 'none';
+  document.body.classList.add('viewer-mode');
+  document.getElementById('viewer-banner').style.display = 'block';
+  renderDashboard();
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+window.addEventListener('load', function() {
+  document.getElementById('auth-modal').style.display = 'flex';
+  document.getElementById('auth-pin').addEventListener('keyup', function(e) { if (e.key === 'Enter') checkPin(); });
+});
 </script>
-</body>
+
+<!-- AUTH MODAL -->
+<div id="auth-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.65);backdrop-filter:blur(8px);align-items:center;justify-content:center;">
+  <div class="auth-card">
+    <div class="auth-logo">🏗️</div>
+    <div class="auth-title">Dwala Site Manager</div>
+    <div class="auth-sub">Enter your PIN to edit, or view in read-only mode.</div>
+    <input id="auth-pin" type="password" inputmode="numeric" placeholder="Enter PIN" maxlength="8" class="auth-input" autocomplete="off">
+    <div id="auth-error" style="display:none;color:#DC2626;font-size:12px;margin-top:-8px;text-align:center;">Incorrect PIN. Try again.</div>
+    <button class="auth-btn-primary" onclick="checkPin()">🔓 Login as Admin</button>
+    <button class="auth-btn-secondary" onclick="viewOnly()">👁 View Only</button>
+  </div>
+</div></body>
 </html>
