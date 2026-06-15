@@ -164,7 +164,10 @@
   .trade-body { display: none; padding: 0 16px 14px; border-top: 1px solid var(--border); }
   .trade-card.open .trade-body { display: block; }
 
-  .task-row { display: grid; grid-template-columns: 1fr 120px 60px; gap: 8px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .task-row { display: grid; grid-template-columns: 1fr 120px 60px; gap: 8px; align-items: center; padding: 10px 0 10px 10px; border-bottom: 1px solid var(--border); border-left: 4px solid transparent; margin-left: -12px; transition: border-color .2s, background .2s; }
+  .task-row.sc  { border-left-color: #16A34A; background: rgba(22,163,74,0.07); }
+  .task-row.sip { border-left-color: #F59E0B; background: rgba(245,158,11,0.07); }
+  .task-row.sns { border-left-color: #9CA3AF; }
   .task-row:last-of-type { border-bottom: none; }
   .task-name { font-size: 13px; color: var(--text-mid); }
   .task-timestamp { font-size: 10px; color: var(--text-dim); margin-top: 2px; font-family: 'IBM Plex Mono', monospace; }
@@ -818,7 +821,7 @@ function buildTradeCard(uid, t) {
     </div>
     <div class="trade-body">
       ${tasks.map((tk,idx)=>`
-        <div class="task-row">
+        <div class="task-row ${statusClass(tk.status)}" id="tr-${uid}-${t.key}-${idx}">
           <div>
             <div class="task-name">${tk.name}</div>
             ${tk.lastUpdated?`<div class="task-timestamp">Updated ${fmtTs(tk.lastUpdated)}</div>`:''}
@@ -856,19 +859,24 @@ function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').repl
 
 // ─── UPDATES ──────────────────────────────────────────────────────────────────
 function stamp(uid,tkey,idx) { STATE[uid][tkey][idx].lastUpdated=Date.now(); }
+function statusClass(s){return s==='Complete'?'sc':s==='In Progress'?'sip':'sns';}
 function updateStatus(uid,tkey,idx,val) {
   STATE[uid][tkey][idx].status=val;
   if(val==='Complete') STATE[uid][tkey][idx].pct=1;
   if(val==='Not Started') STATE[uid][tkey][idx].pct=0;
   stamp(uid,tkey,idx); refreshUnitProgress(uid,tkey); save();
+  const row=document.getElementById('tr-'+uid+'-'+tkey+'-'+idx);
+  if(row) row.className='task-row '+statusClass(val);
 }
 function updatePct(uid,tkey,idx,val) {
   const n=Math.max(0,Math.min(100,parseInt(val)||0));
   STATE[uid][tkey][idx].pct=n/100;
-  STATE[uid][tkey][idx].status=n===100?'Complete':n===0?'Not Started':'In Progress';
+  const ns=n===100?'Complete':n===0?'Not Started':'In Progress';
+  STATE[uid][tkey][idx].status=ns;
   stamp(uid,tkey,idx); refreshUnitProgress(uid,tkey); save();
-}
-function updateRemarks(uid,tkey,idx,val) { STATE[uid][tkey][idx].remarks=val; stamp(uid,tkey,idx); save(); }
+  const row=document.getElementById('tr-'+uid+'-'+tkey+'-'+idx);
+  if(row) row.className='task-row '+statusClass(ns);
+}function updateRemarks(uid,tkey,idx,val) { STATE[uid][tkey][idx].remarks=val; stamp(uid,tkey,idx); save(); }
 function refreshUnitProgress(uid,tkey) {
   const tasks=STATE[uid][tkey];
   const tpct=tasks.reduce((s,tk)=>s+tk.pct,0)/tasks.length;
