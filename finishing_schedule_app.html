@@ -379,6 +379,33 @@ body.viewer-mode .photo-label-btn,
 body.viewer-mode .photo-remove,
 body.viewer-mode .daily-photo-del,
 body.viewer-mode .upload-card { display:none !important; }
+
+/* ── MOBILE IMPROVEMENTS ───────────────────────────────── */
+.nav { flex-wrap: nowrap; }
+.nav-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; flex: 1; display: flex; gap: 4px; scrollbar-width: none; }
+.nav-tabs::-webkit-scrollbar { display: none; }
+
+@media(max-width:700px) {
+  .block-cards { grid-template-columns: 1fr; }
+  .task-row { grid-template-columns: 1fr auto auto; gap: 6px; }
+  .status-select { font-size: 12px; padding: 5px 4px; min-width: 88px; }
+  .pct-input { width: 46px; font-size: 13px; padding: 5px 4px; }
+  .unit-chip { padding: 14px 12px; }
+  .unit-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+  .trade-header { padding: 14px 12px; }
+  .task-name { font-size: 14px; }
+  .photo-label-btn { font-size: 12px; padding: 6px 10px; }
+  .photo-thumb { width: 48px; height: 48px; }
+  .remarks-input { font-size: 13px; padding: 8px 10px; }
+  .admin-nav-btn { font-size: 12px; padding: 6px 10px; }
+  .main-tab { font-size: 12px; padding: 6px 10px; white-space: nowrap; }
+}
+@media(max-width:420px) {
+  .task-row { grid-template-columns: 1fr; }
+  .task-row .status-select, .task-row .pct-input { width: 100%; box-sizing: border-box; }
+  .status-select { min-width: unset; }
+  .pct-input { width: 100% !important; }
+}
 </style>
 </head>
 <body>
@@ -725,6 +752,16 @@ const GENERAL_UNITS = {
   'GL2': 'Connecting Lobby – 2nd Floor'
 };
 function unitName(uid) { return GENERAL_UNITS[uid] || uid; }
+
+const GENERAL_AREA_DEFS = {
+  'GCP': { trades: [{ key:'work', label:'Car Park Works', icon:'', tasks:['Pavement','Sanitation / Drainage'] }] },
+  'GST': { trades: [{ key:'work', label:'Septic Tank Works', icon:'', tasks:['Excavation','Pipe Laying','Concrete Base','Block Work','Cover Slab','Plastering & Rendering','Backfilling & Finishing'] }] },
+  'GPT': { trades: [{ key:'work', label:'Polytank Works', icon:'', tasks:['Platform / Base','Pipe Connections','Cover Slab','Plastering'] }] },
+  'GLG': { trades: [{ key:'work', label:'Lobby Works', icon:'', tasks:['Screeding','Tiling'] }] },
+  'GL1': { trades: [{ key:'work', label:'Lobby Works', icon:'', tasks:['Screeding','Tiling'] }] },
+  'GL2': { trades: [{ key:'work', label:'Lobby Works', icon:'', tasks:['Screeding','Tiling'] }] }
+};
+function getTradesFor(uid) { return GENERAL_AREA_DEFS[uid] ? GENERAL_AREA_DEFS[uid].trades : TRADES; }
 // ─── STATE ───────────────────────────────────────────────────────────────────
 function buildState() {
   const all = {};
@@ -732,7 +769,7 @@ function buildState() {
   const units = [...Array.from({length:12},(_,i)=>'A'+(i+1)), ...Array.from({length:12},(_,i)=>'B'+(i+1)), ...Object.keys(GENERAL_UNITS)];
   units.forEach(uid => {
     all[uid] = {};
-    TRADES.forEach(t => {
+    getTradesFor(uid).forEach(t => {
       all[uid][t.key] = t.tasks.map((name, idx) => {
         const s = seeds[uid]?.[t.key]?.[idx];
         return { name, status: s?s[0]:'Not Started', pct: s?s[1]:0, remarks: s?.[2]||'', photos: [], lastUpdated: null };
@@ -744,10 +781,10 @@ function buildState() {
 
 let STATE;
 try { const sv = localStorage.getItem('dwala_state_v2'); STATE = sv ? JSON.parse(sv) : buildState(); } catch(e) { STATE = buildState(); }
-// Ensure G units exist (added later, may be missing from old saves)
-Object.keys(GENERAL_UNITS).forEach(uid=>{ if(!STATE[uid]){STATE[uid]={};TRADES.forEach(t=>{STATE[uid][t.key]=t.tasks.map(name=>({name,status:'Not Started',pct:0,remarks:'',photos:[],lastUpdated:null}));});} });
+// Ensure G units have correct task structure (reset if using old apartment-trade format)
+Object.keys(GENERAL_AREA_DEFS).forEach(uid=>{ if(!STATE[uid]||!STATE[uid].work){STATE[uid]={};GENERAL_AREA_DEFS[uid].trades.forEach(t=>{STATE[uid][t.key]=t.tasks.map(name=>({name,status:'Not Started',pct:0,remarks:'',photos:[],lastUpdated:null}));});} });
 // Migrate old photo→photos
-Object.keys(STATE).forEach(uid=>TRADES.forEach(t=>STATE[uid][t.key].forEach(tk=>{ if(!tk.photos){tk.photos=tk.photo?[tk.photo]:[];delete tk.photo;} })));
+Object.keys(STATE).forEach(uid=>getTradesFor(uid).forEach(t=>{ if(STATE[uid][t.key]) STATE[uid][t.key].forEach(tk=>{ if(!tk.photos){tk.photos=tk.photo?[tk.photo]:[];delete tk.photo;} }); }));
 
 function save() {
   try { localStorage.setItem('dwala_state_v2', JSON.stringify(STATE)); } catch(e) { alert('Storage full — consider removing task photos to free space.'); }
@@ -757,11 +794,11 @@ function save() {
 }
 
 // ─── CALCULATIONS ─────────────────────────────────────────────────────────────
-function unitPct(uid) { let s=0,n=0; TRADES.forEach(t=>STATE[uid][t.key].forEach(tk=>{s+=tk.pct;n++;})); return n?s/n:0; }
-function unitCounts(uid) { let c=0,p=0,ns=0; TRADES.forEach(t=>STATE[uid][t.key].forEach(tk=>{if(tk.status==='Complete')c++;else if(tk.status==='In Progress')p++;else ns++;})); return {complete:c,inprog:p,notstart:ns}; }
+function unitPct(uid) { let s=0,n=0; getTradesFor(uid).forEach(t=>{if(STATE[uid][t.key])STATE[uid][t.key].forEach(tk=>{s+=tk.pct;n++;});}); return n?s/n:0; }
+function unitCounts(uid) { let c=0,p=0,ns=0; getTradesFor(uid).forEach(t=>{if(STATE[uid][t.key])STATE[uid][t.key].forEach(tk=>{if(tk.status==='Complete')c++;else if(tk.status==='In Progress')p++;else ns++;});}); return {complete:c,inprog:p,notstart:ns}; }
 function blockPct(bl) { const us=Object.keys(STATE).filter(u=>u.startsWith(bl)); return us.reduce((a,u)=>a+unitPct(u),0)/us.length; }
 function blockCounts(bl) { const us=Object.keys(STATE).filter(u=>u.startsWith(bl)); let c=0,p=0,ns=0; us.forEach(u=>{const r=unitCounts(u);c+=r.complete;p+=r.inprog;ns+=r.notstart;}); return {complete:c,inprog:p,notstart:ns}; }
-function allBlockers() { const list=[]; Object.keys(STATE).forEach(uid=>TRADES.forEach(t=>STATE[uid][t.key].forEach(tk=>{if(tk.remarks&&tk.remarks.trim())list.push({unit:uid,trade:t.label,task:tk.name,text:tk.remarks});}))); return list; }
+function allBlockers() { const list=[]; Object.keys(STATE).forEach(uid=>getTradesFor(uid).forEach(t=>{if(STATE[uid][t.key])STATE[uid][t.key].forEach(tk=>{if(tk.remarks&&tk.remarks.trim())list.push({unit:unitName(uid),trade:t.label,task:tk.name,text:tk.remarks});});})); return list; }
 function fmtTs(ts) { if(!ts)return ''; const d=new Date(ts); return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}); }
 function fmtDate(d) { return d.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'}); }
 
@@ -836,7 +873,7 @@ function buildUnitDetail(uid) {
         <div class="tape-wrap"><div class="tape-track"><div class="tape-fill" id="unit-bar-${uid}" style="width:${pct*100}%"></div></div></div>
       </div>
     </div>
-    ${TRADES.map(t=>buildTradeCard(uid,t)).join('')}`;
+    ${getTradesFor(uid).map(t=>buildTradeCard(uid,t)).join('')}`;
 }
 function buildTradeCard(uid, t) {
   const tasks=STATE[uid][t.key];
@@ -1003,7 +1040,7 @@ function renderReport() {
 // ─── BOSS VIEW ────────────────────────────────────────────────────────────────
 function getUnitPhotos(uid) {
   var photos = [];
-  TRADES.forEach(function(t) {
+  getTradesFor(uid).forEach(function(t) {
     STATE[uid][t.key].forEach(function(task) {
       (task.photos||[]).forEach(function(src) {
         photos.push({ src: src, label: t.label + ' · ' + task.name });
