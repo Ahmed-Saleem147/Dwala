@@ -180,11 +180,14 @@
   .remarks-input::placeholder { color: var(--text-dim); }
 
   /* PHOTO ROW */
-  .photo-row { display: flex; align-items: center; gap: 8px; margin: 4px 0 8px; }
+  .photo-row { display: flex; align-items: center; gap: 8px; margin: 4px 0 8px; flex-wrap: wrap; }
+  .photo-strip { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+  .photo-strip-item { position: relative; display: inline-block; }
+  .photo-strip-item .photo-remove { position: absolute; top: -4px; right: -4px; background: var(--red); color: #fff; border-radius: 50%; width: 16px; height: 16px; font-size: 10px; padding: 0; display: flex; align-items: center; justify-content: center; }
   .photo-label-btn { font-size: 11px; color: var(--text-dim); cursor: pointer; background: var(--surface2); border: 1px dashed var(--border); border-radius: 6px; padding: 4px 10px; transition: all 0.15s; white-space: nowrap; user-select: none; }
   .photo-label-btn:hover { border-color: var(--orange); color: var(--orange); }
   .photo-file { display: none; }
-  .photo-thumb { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 2px solid var(--orange); cursor: pointer; display: none; }
+  .photo-thumb { width: 54px; height: 54px; object-fit: cover; border-radius: 6px; border: 2px solid var(--orange); cursor: pointer; display: block; }
   .photo-remove { background: none; border: none; color: var(--red); font-size: 15px; cursor: pointer; padding: 0 4px; line-height: 1; }
 
   /* REPORT */
@@ -701,7 +704,7 @@ function buildState() {
     TRADES.forEach(t => {
       all[uid][t.key] = t.tasks.map((name, idx) => {
         const s = seeds[uid]?.[t.key]?.[idx];
-        return { name, status: s?s[0]:'Not Started', pct: s?s[1]:0, remarks: s?.[2]||'', photo: null, lastUpdated: null };
+        return { name, status: s?s[0]:'Not Started', pct: s?s[1]:0, remarks: s?.[2]||'', photos: [], lastUpdated: null };
       });
     });
   });
@@ -710,6 +713,8 @@ function buildState() {
 
 let STATE;
 try { const sv = localStorage.getItem('dwala_state_v2'); STATE = sv ? JSON.parse(sv) : buildState(); } catch(e) { STATE = buildState(); }
+// Migrate old photo→photos
+Object.keys(STATE).forEach(uid=>TRADES.forEach(t=>STATE[uid][t.key].forEach(tk=>{ if(!tk.photos){tk.photos=tk.photo?[tk.photo]:[];delete tk.photo;} })));
 
 function save() {
   try { localStorage.setItem('dwala_state_v2', JSON.stringify(STATE)); } catch(e) { alert('Storage full — consider removing task photos to free space.'); }
@@ -831,15 +836,15 @@ function buildTradeCard(uid, t) {
             onchange="updateRemarks('${uid}','${t.key}',${idx},this.value)">
         </div>
         <div class="photo-row">
-          <input type="file" accept="image/*" class="photo-file" id="pf-${uid}-${t.key}-${idx}"
+          <input type="file" accept="image/*" multiple class="photo-file" id="pf-${uid}-${t.key}-${idx}"
             onchange="handlePhoto('${uid}','${t.key}',${idx},this)">
-          <label class="photo-label-btn" id="pl-${uid}-${t.key}-${idx}"
+          <label class="photo-label-btn"
             onclick="document.getElementById('pf-${uid}-${t.key}-${idx}').click()">
-            ${tk.photo?'📷 Change photo':'📷 Add photo'}
+            ${(tk.photos&&tk.photos.length)?'📷 Add more photos':'📷 Add photos'}
           </label>
-          ${tk.photo?`<img class="photo-thumb" id="pt-${uid}-${t.key}-${idx}" src="${tk.photo}" onclick="openLightbox('${uid}','${t.key}',${idx})">
-            <button class="photo-remove" title="Remove photo" onclick="removePhoto('${uid}','${t.key}',${idx})">✕</button>`
-            :`<img class="photo-thumb" id="pt-${uid}-${t.key}-${idx}" src="" style="display:none">`}
+          <div class="photo-strip" id="ps-${uid}-${t.key}-${idx}">
+            ${(tk.photos||[]).map((src,pi)=>`<div class="photo-strip-item"><img class="photo-thumb" src="${src}" onclick="openTaskPhoto('${uid}','${t.key}',${idx},${pi})"><button class="photo-remove" onclick="removePhoto('${uid}','${t.key}',${idx},${pi})">✕</button></div>`).join('')}
+          </div>
         </div>
       `).join('')}
     </div>
@@ -875,39 +880,39 @@ function refreshUnitProgress(uid,tkey) {
 
 // ─── PHOTOS ───────────────────────────────────────────────────────────────────
 function handlePhoto(uid,tkey,idx,input) {
-  const file=input.files[0]; if(!file) return;
-  const reader=new FileReader();
-  reader.onload=function(e) {
-    STATE[uid][tkey][idx].photo=e.target.result;
-    stamp(uid,tkey,idx); save();
-    const thumb=document.getElementById(`pt-${uid}-${tkey}-${idx}`);
-    const lbl=document.getElementById(`pl-${uid}-${tkey}-${idx}`);
-    if(thumb){thumb.src=e.target.result;thumb.style.display='block';thumb.onclick=()=>openLightbox(uid,tkey,idx);}
-    if(lbl) lbl.textContent='📷 Change photo';
-    // add remove button if not present
-    const row=thumb.parentNode;
-    if(!row.querySelector('.photo-remove')) {
-      const rm=document.createElement('button');
-      rm.className='photo-remove'; rm.title='Remove photo'; rm.textContent='✕';
-      rm.onclick=()=>removePhoto(uid,tkey,idx);
-      row.appendChild(rm);
-    }
-  };
-  reader.readAsDataURL(file);
+  const files=Array.from(input.files); if(!files.length) return;
+  if(!STATE[uid][tkey][idx].photos) STATE[uid][tkey][idx].photos=[];
+  let done=0;
+  files.forEach(function(file) {
+    const reader=new FileReader();
+    reader.onload=function(e) {
+      STATE[uid][tkey][idx].photos.push(e.target.result);
+      done++;
+      if(done===files.length){stamp(uid,tkey,idx);save();renderTaskPhotos(uid,tkey,idx);}
+    };
+    reader.readAsDataURL(file);
+  });
+  input.value='';
 }
-function removePhoto(uid,tkey,idx) {
-  STATE[uid][tkey][idx].photo=null; save();
-  const thumb=document.getElementById(`pt-${uid}-${tkey}-${idx}`);
-  const lbl=document.getElementById(`pl-${uid}-${tkey}-${idx}`);
-  if(thumb){thumb.src='';thumb.style.display='none';}
-  if(lbl) lbl.textContent='📷 Add photo';
-  const row=thumb?.parentNode;
-  if(row){const rm=row.querySelector('.photo-remove');if(rm)rm.remove();}
+function renderTaskPhotos(uid,tkey,idx) {
+  const strip=document.getElementById('ps-'+uid+'-'+tkey+'-'+idx); if(!strip) return;
+  const photos=STATE[uid][tkey][idx].photos||[];
+  strip.innerHTML=photos.map(function(src,pi) {
+    return '<div class="photo-strip-item">'+
+      '<img class="photo-thumb" src="'+src+'" onclick="openTaskPhoto(\''+uid+'\',\''+tkey+'\','+idx+','+pi+')">'+
+      '<button class="photo-remove" onclick="removePhoto(\''+uid+'\',\''+tkey+'\','+idx+','+pi+')">✕</button>'+
+      '</div>';
+  }).join('');
+}
+function removePhoto(uid,tkey,idx,pi) {
+  if(!STATE[uid][tkey][idx].photos) return;
+  STATE[uid][tkey][idx].photos.splice(pi,1);
+  save(); renderTaskPhotos(uid,tkey,idx);
 }
 
 // ─── LIGHTBOX ────────────────────────────────────────────────────────────────
-function openLightbox(uid,tkey,idx) {
-  const src=STATE[uid][tkey][idx].photo; if(!src)return;
+function openTaskPhoto(uid,tkey,idx,pi) {
+  const photos=STATE[uid][tkey][idx].photos||[]; const src=photos[pi]; if(!src)return;
   document.getElementById('lightbox-img').src=src;
   document.getElementById('lightbox').classList.add('show');
 }
@@ -971,7 +976,9 @@ function getUnitPhotos(uid) {
   var photos = [];
   TRADES.forEach(function(t) {
     STATE[uid][t.key].forEach(function(task) {
-      if (task.photo) photos.push({ src: task.photo, label: t.label + ' · ' + task.name });
+      (task.photos||[]).forEach(function(src) {
+        photos.push({ src: src, label: t.label + ' · ' + task.name });
+      });
     });
   });
   return photos;
