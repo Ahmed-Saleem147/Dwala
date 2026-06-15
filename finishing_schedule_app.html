@@ -406,6 +406,40 @@ body.viewer-mode .upload-card { display:none !important; }
   .status-select { min-width: unset; }
   .pct-input { width: 100% !important; }
 }
+
+/* ── OTHER WORKS ───────────────────────────────────── */
+.ow-input {
+  width:100%; box-sizing:border-box; border:2px solid #e5e5e5; border-radius:10px;
+  padding:11px 14px; font-size:14px; color:var(--text); outline:none; transition:border-color .2s;
+  background:#fff;
+}
+.ow-input:focus { border-color:var(--orange); }
+.ow-status-sel {
+  flex:1; min-width:130px; border:2px solid #e5e5e5; border-radius:10px;
+  padding:10px 12px; font-size:14px; color:var(--text); outline:none; background:#fff;
+  transition:border-color .2s;
+}
+.ow-status-sel:focus { border-color:var(--orange); }
+.ow-add-btn {
+  width:100%; margin-top:12px; padding:13px; background:var(--orange); color:#fff;
+  border:none; border-radius:10px; font-size:15px; font-weight:700; cursor:pointer;
+  transition:background .2s;
+}
+.ow-add-btn:hover { background:var(--orange-dim); }
+.ow-card {
+  background:var(--surface); border-radius:14px; padding:14px 14px 14px 18px;
+  margin-bottom:12px; border-left:5px solid #9CA3AF; transition:border-color .2s;
+}
+.ow-card.sc  { border-left-color:#16A34A; background:rgba(22,163,74,0.06); }
+.ow-card.sip { border-left-color:#F59E0B; background:rgba(245,158,11,0.06); }
+.ow-card.sns { border-left-color:#9CA3AF; }
+.ow-badge {
+  display:inline-block; font-size:11px; font-weight:700; padding:2px 8px;
+  border-radius:20px; letter-spacing:0.3px;
+}
+.ow-badge.sc  { background:rgba(22,163,74,0.15);  color:#15803D; }
+.ow-badge.sip { background:rgba(245,158,11,0.15); color:#B45309; }
+.ow-badge.sns { background:rgba(156,163,175,0.2); color:#6B7280; }
 </style>
 </head>
 <body>
@@ -418,6 +452,7 @@ body.viewer-mode .upload-card { display:none !important; }
     <button class="main-tab" data-screen="report" onclick="showScreen('report')">Report</button>
     <button class="main-tab" data-screen="boss" onclick="showScreen('boss')">Boss View</button>
     <button class="main-tab" data-screen="photos" onclick="showScreen('photos')">Photos</button>
+    <button class="main-tab" data-screen="other" onclick="showScreen('other')">Other Works</button>
   </div>
   <button id="admin-nav-btn" class="admin-nav-btn" onclick="showAdminModal()">&#128274; Admin</button>
 </nav>
@@ -810,7 +845,7 @@ function showScreen(name) {
   if(name==='dashboard') renderDashboard();
   if(name==='units') renderUnitGrid('all');
   if(name==='report') renderReport();
-  if(name==='boss') renderBossView(); if(name==='photos') renderPhotos();
+  if(name==='boss') renderBossView(); if(name==='photos') renderPhotos(); if(name==='other') renderOtherWorks();
 }
 function showUnitsBlock(bl) { showScreen('units'); filterBlock(bl); }
 
@@ -1158,6 +1193,140 @@ function openPhotoLightbox(src) {
   document.getElementById('lightbox').classList.add('show');
 }
 
+
+// ─── OTHER WORKS ──────────────────────────────────────────────────────────────
+var OTHER_WORKS = [];
+try { var _ow = localStorage.getItem('dwala_other_works'); OTHER_WORKS = _ow ? JSON.parse(_ow) : []; } catch(e) { OTHER_WORKS = []; }
+var OW_PENDING_PHOTOS = [];
+
+function saveOtherWorks() {
+  try { localStorage.setItem('dwala_other_works', JSON.stringify(OTHER_WORKS)); }
+  catch(e) { alert('Storage full — delete some photos to free space.'); }
+}
+
+function handleOwPhotos(input) {
+  var files = Array.from(input.files);
+  OW_PENDING_PHOTOS = [];
+  if (!files.length) { document.getElementById('ow-photo-count').textContent = ''; return; }
+  var done = 0;
+  files.forEach(function(file) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      OW_PENDING_PHOTOS.push(e.target.result);
+      done++;
+      if (done === files.length)
+        document.getElementById('ow-photo-count').textContent = done + ' photo' + (done > 1 ? 's' : '') + ' ready';
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function addOtherWork() {
+  var title = document.getElementById('ow-title').value.trim();
+  if (!title) { document.getElementById('ow-title').focus(); return; }
+  var entry = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+    title: title,
+    date: document.getElementById('ow-date').value || new Date().toISOString().split('T')[0],
+    status: document.getElementById('ow-status').value,
+    photos: OW_PENDING_PHOTOS.slice()
+  };
+  OTHER_WORKS.unshift(entry);
+  saveOtherWorks();
+  OW_PENDING_PHOTOS = [];
+  document.getElementById('ow-title').value = '';
+  document.getElementById('ow-file').value = '';
+  document.getElementById('ow-photo-count').textContent = '';
+  renderOtherWorks();
+  var t = document.getElementById('save-toast');
+  t.classList.add('show'); setTimeout(function() { t.classList.remove('show'); }, 1800);
+}
+
+function addOwPhoto(id, input) {
+  var entry = OTHER_WORKS.find(function(e) { return e.id === id; });
+  if (!entry) return;
+  var files = Array.from(input.files);
+  var done = 0;
+  files.forEach(function(file) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      entry.photos.push(e.target.result);
+      done++;
+      if (done === files.length) { saveOtherWorks(); renderOtherWorks(); }
+    };
+    reader.readAsDataURL(file);
+  });
+  input.value = '';
+}
+
+function openOwPhoto(id, pi) {
+  var entry = OTHER_WORKS.find(function(e) { return e.id === id; });
+  if (entry && entry.photos[pi]) openPhotoLightbox(entry.photos[pi]);
+}
+
+function deleteOwPhoto(id, pi) {
+  var entry = OTHER_WORKS.find(function(e) { return e.id === id; });
+  if (!entry) return;
+  entry.photos.splice(pi, 1);
+  saveOtherWorks(); renderOtherWorks();
+}
+
+function deleteOtherWork(id) {
+  if (!confirm('Delete this work entry?')) return;
+  OTHER_WORKS = OTHER_WORKS.filter(function(e) { return e.id !== id; });
+  saveOtherWorks(); renderOtherWorks();
+}
+
+function updateOwStatus(id, val) {
+  var entry = OTHER_WORKS.find(function(e) { return e.id === id; });
+  if (!entry) return;
+  entry.status = val;
+  saveOtherWorks(); renderOtherWorks();
+}
+
+function renderOtherWorks() {
+  var dpDate = document.getElementById('ow-date');
+  if (dpDate && !dpDate.value) dpDate.value = new Date().toISOString().split('T')[0];
+  var el = document.getElementById('ow-list'); if (!el) return;
+  var uploadCard = document.getElementById('ow-upload-card');
+  if (uploadCard) uploadCard.style.display = SESSION_ADMIN ? 'block' : 'none';
+  if (!OTHER_WORKS.length) {
+    el.innerHTML = '<div class="photos-empty"><div class="photos-empty-icon">🔧</div>No other works added yet.<br>Use the form above to add entries.</div>';
+    return;
+  }
+  el.innerHTML = OTHER_WORKS.map(function(entry) {
+    var sc = entry.status === 'Complete' ? 'sc' : entry.status === 'In Progress' ? 'sip' : 'sns';
+    var dateLabel = new Date(entry.date + 'T12:00:00').toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
+    var photos = (entry.photos || []).map(function(src, pi) {
+      return '<div class="photo-strip-item">' +
+        '<img class="photo-thumb" src="' + src + '" onclick="openOwPhoto(\'' + entry.id + '\',' + pi + ')">' +
+        (SESSION_ADMIN ? '<button class="photo-remove" onclick="deleteOwPhoto(\'' + entry.id + '\',' + pi + ')">✕</button>' : '') +
+        '</div>';
+    }).join('');
+    return '<div class="ow-card ' + sc + '">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">' +
+        '<div style="flex:1;">' +
+          '<div style="font-weight:700;font-size:15px;color:var(--text);margin-bottom:4px;">' + escHtml(entry.title) + '</div>' +
+          '<span class="ow-badge ' + sc + '">' + entry.status + '</span>' +
+          '<span style="font-size:12px;color:var(--text-mid);margin-left:8px;">' + dateLabel + '</span>' +
+        '</div>' +
+        (SESSION_ADMIN ?
+          '<div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">' +
+            '<label style="cursor:pointer;background:var(--orange);color:#fff;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:600;white-space:nowrap;">📷 Add<input type="file" accept="image/*" multiple style="display:none" onchange="addOwPhoto(\'' + entry.id + '\',this)"></label>' +
+            '<button onclick="deleteOtherWork(\'' + entry.id + '\')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:20px;padding:4px;line-height:1;flex-shrink:0;">✕</button>' +
+          '</div>' : '') +
+      '</div>' +
+      '<div style="margin-top:8px;">' +
+        '<select onchange="updateOwStatus(\'' + entry.id + '\',this.value)" ' + (!SESSION_ADMIN ? 'disabled' : '') + ' style="border:1.5px solid #e5e5e5;border-radius:8px;padding:5px 8px;font-size:13px;color:var(--text);background:#fff;' + (!SESSION_ADMIN ? 'pointer-events:none;opacity:.6;' : '') + '">' +
+          '<option' + (entry.status === 'Not Started' ? ' selected' : '') + '>Not Started</option>' +
+          '<option' + (entry.status === 'In Progress' ? ' selected' : '') + '>In Progress</option>' +
+          '<option' + (entry.status === 'Complete' ? ' selected' : '') + '>Complete</option>' +
+        '</select>' +
+      '</div>' +
+      (photos ? '<div class="photo-strip" style="margin-top:10px;">' + photos + '</div>' : '') +
+    '</div>';
+  }).join('');
+}
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 var SESSION_ADMIN = false;
 var ADMIN_PIN = '1234'; // change this to your PIN
@@ -1215,6 +1384,33 @@ window.addEventListener('load', function() {
 });
 </script>
 
+
+<!-- OTHER WORKS -->
+<div id="screen-other" class="screen">
+  <div class="photos-hero" style="background:linear-gradient(135deg,#7C3AED 0%,#5B21B6 100%);">
+    <div class="photos-hero-title">Other Works</div>
+    <div class="photos-hero-sub">Add any additional work with photos</div>
+  </div>
+  <div class="upload-card" id="ow-upload-card">
+    <h3 style="margin:0 0 12px;font-size:16px;font-weight:700;color:var(--text)">Add Work Entry</h3>
+    <input type="text" id="ow-title" class="ow-input" placeholder="Work title (e.g. Perimeter Fence)">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+      <input type="date" id="ow-date" class="ow-input" style="flex:1;min-width:130px;">
+      <select id="ow-status" class="ow-status-sel">
+        <option value="Not Started">Not Started</option>
+        <option value="In Progress" selected>In Progress</option>
+        <option value="Complete">Complete</option>
+      </select>
+    </div>
+    <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <button class="upload-file-btn" onclick="document.getElementById('ow-file').click()">📷 Add Photos</button>
+      <input type="file" accept="image/*" multiple id="ow-file" style="display:none" onchange="handleOwPhotos(this)">
+      <span id="ow-photo-count" style="font-size:12px;color:var(--text-mid);"></span>
+    </div>
+    <button class="ow-add-btn" onclick="addOtherWork()">+ Add Entry</button>
+  </div>
+  <div id="ow-list" style="padding:0 16px 80px;"></div>
+</div>
 <!-- AUTH MODAL -->
 <div id="auth-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.65);backdrop-filter:blur(8px);align-items:center;justify-content:center;">
   <div class="auth-card">
