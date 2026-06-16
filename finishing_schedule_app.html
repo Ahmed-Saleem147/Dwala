@@ -441,8 +441,15 @@ body.viewer-mode .upload-card { display:none !important; }
 .ow-badge.sip { background:rgba(245,158,11,0.15); color:#B45309; }
 .ow-badge.sns { background:rgba(156,163,175,0.2); color:#6B7280; }
 </style>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
+
+<div id="loading-overlay" style="position:fixed;inset:0;background:#1a1a1a;display:flex;align-items:center;justify-content:center;z-index:9999;flex-direction:column;gap:16px;">
+  <div style="color:#e8632a;font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:600;letter-spacing:3px;">DUALA</div>
+  <div style="color:#888;font-family:'IBM Plex Sans',sans-serif;font-size:14px;">Loading...</div>
+</div>
 
 <nav class="nav">
   <div class="nav-brand">DUALA <span>// FINISHING</span></div>
@@ -816,17 +823,30 @@ function buildState() {
 }
 
 let STATE;
-try { const sv = localStorage.getItem('dwala_state_v2'); STATE = sv ? JSON.parse(sv) : buildState(); } catch(e) { STATE = buildState(); }
-// Ensure G units have correct task structure (reset if using old apartment-trade format)
-Object.keys(GENERAL_AREA_DEFS).forEach(uid=>{ if(!STATE[uid]||!STATE[uid].work){STATE[uid]={};GENERAL_AREA_DEFS[uid].trades.forEach(t=>{STATE[uid][t.key]=t.tasks.map(name=>({name,status:'Not Started',pct:0,remarks:'',photos:[],lastUpdated:null}));});} });
-// Migrate old photo→photos
-Object.keys(STATE).forEach(uid=>getTradesFor(uid).forEach(t=>{ if(STATE[uid][t.key]) STATE[uid][t.key].forEach(tk=>{ if(!tk.photos){tk.photos=tk.photo?[tk.photo]:[];delete tk.photo;} }); }));
+// ─── FIREBASE ─────────────────────────────────────────────────────────────────
+var firebaseConfig = {
+  apiKey: "AIzaSyB0h8cZu2hxC8yZlGVm-hIDu9mRmQ1z40Q",
+  authDomain: "duala-fa902.firebaseapp.com",
+  projectId: "duala-fa902",
+  storageBucket: "duala-fa902.firebasestorage.app",
+  messagingSenderId: "376388614294",
+  appId: "1:376388614294:web:6daa695ccfb74dc577eab7"
+};
+firebase.initializeApp(firebaseConfig);
+var db = firebase.firestore();
+
+var STATE = buildState();
+
+function migrateState(s) {
+  Object.keys(GENERAL_AREA_DEFS).forEach(function(uid) { if(!s[uid]||!s[uid].work){s[uid]={};GENERAL_AREA_DEFS[uid].trades.forEach(function(t){s[uid][t.key]=t.tasks.map(function(name){return{name:name,status:'Not Started',pct:0,remarks:'',photos:[],lastUpdated:null};});});} });
+  Object.keys(s).forEach(function(uid){getTradesFor(uid).forEach(function(t){ if(s[uid][t.key]) s[uid][t.key].forEach(function(tk){ if(!tk.photos){tk.photos=tk.photo?[tk.photo]:[];delete tk.photo;} }); });});
+  return s;
+}
 
 function save() {
-  try { localStorage.setItem('dwala_state_v2', JSON.stringify(STATE)); } catch(e) { alert('Storage full — consider removing task photos to free space.'); }
-  const t = document.getElementById('save-toast');
-  t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'), 1800);
+  db.collection('app').doc('state').set({ data: STATE }).catch(function(e){ console.error('Save error:',e); });
+  var t = document.getElementById('save-toast');
+  t.classList.add('show'); setTimeout(function(){t.classList.remove('show');}, 1800);
 }
 
 // ─── CALCULATIONS ─────────────────────────────────────────────────────────────
@@ -1122,11 +1142,10 @@ function renderBossView() {
 
 // ─── DAILY PHOTOS ─────────────────────────────────────────────────────────────
 var DAILY_PHOTOS = [];
-try { var _dp = localStorage.getItem('dwala_daily_photos'); DAILY_PHOTOS = _dp ? JSON.parse(_dp) : []; } catch(e) { DAILY_PHOTOS = []; }
+var DAILY_PHOTOS = [];
 
 function saveDailyPhotos() {
-  try { localStorage.setItem('dwala_daily_photos', JSON.stringify(DAILY_PHOTOS)); }
-  catch(e) { alert('Storage full — delete some photos to free space.'); }
+  db.collection('app').doc('daily_photos').set({ data: DAILY_PHOTOS }).catch(function(e){ console.error('Save photos error:',e); });
 }
 
 function handleDailyUpload(input) {
@@ -1263,12 +1282,10 @@ function compressImage(file, callback) {
 }
 // ─── OTHER WORKS ──────────────────────────────────────────────────────────────
 var OTHER_WORKS = [];
-try { var _ow = localStorage.getItem('dwala_other_works'); OTHER_WORKS = _ow ? JSON.parse(_ow) : []; } catch(e) { OTHER_WORKS = []; }
 var OW_PENDING_PHOTOS = [];
 
 function saveOtherWorks() {
-  try { localStorage.setItem('dwala_other_works', JSON.stringify(OTHER_WORKS)); }
-  catch(e) { alert('Storage full — delete some photos to free space.'); }
+  db.collection('app').doc('other_works').set({ data: OTHER_WORKS }).catch(function(e){ console.error('Save other works error:',e); });
 }
 
 function handleOwPhotos(input) {
@@ -1440,13 +1457,53 @@ function applyViewerMode(isViewer) {
 }
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
+function refreshCurrentScreen() {
+  var active = document.querySelector('.screen.active');
+  if (!active) return;
+  var name = active.id.replace('screen-', '');
+  if (name==='dashboard') renderDashboard();
+  else if (name==='units') renderUnitGrid('all');
+  else if (name==='report') renderReport();
+  else if (name==='boss') renderBossView();
+  else if (name==='photos') renderPhotos();
+  else if (name==='other') renderOtherWorks();
+}
+
 window.addEventListener('load', function() {
   applyViewerMode(true);
-  renderDashboard();
   var pin = document.getElementById('auth-pin');
   if (pin) pin.addEventListener('keyup', function(e) { if (e.key === 'Enter') checkPin(); });
   var modal = document.getElementById('auth-modal');
   if (modal) modal.addEventListener('click', function(e) { if (e.target === modal) closeAdminModal(); });
+
+  var overlay = document.getElementById('loading-overlay');
+
+  Promise.all([
+    db.collection('app').doc('state').get(),
+    db.collection('app').doc('daily_photos').get(),
+    db.collection('app').doc('other_works').get()
+  ]).then(function(results) {
+    var stateDoc = results[0], dpDoc = results[1], owDoc = results[2];
+    if (stateDoc.exists) { STATE = migrateState(stateDoc.data().data); } else { STATE = buildState(); save(); }
+    if (dpDoc.exists) DAILY_PHOTOS = dpDoc.data().data || [];
+    if (owDoc.exists) OTHER_WORKS = owDoc.data().data || [];
+    overlay.style.display = 'none';
+    renderDashboard();
+
+    // Live updates for all viewers
+    db.collection('app').doc('state').onSnapshot(function(doc) {
+      if (doc.exists) { STATE = migrateState(doc.data().data); refreshCurrentScreen(); }
+    });
+    db.collection('app').doc('daily_photos').onSnapshot(function(doc) {
+      if (doc.exists) { DAILY_PHOTOS = doc.data().data || []; if (document.querySelector('#screen-photos.active')) renderPhotos(); }
+    });
+    db.collection('app').doc('other_works').onSnapshot(function(doc) {
+      if (doc.exists) { OTHER_WORKS = doc.data().data || []; if (document.querySelector('#screen-other.active')) renderOtherWorks(); }
+    });
+  }).catch(function(err) {
+    console.error('Firebase load error:', err);
+    overlay.innerHTML = '<div style="color:#e8632a;font-family:monospace;font-size:16px;text-align:center;padding:24px;">Failed to connect to database.<br><br><button onclick="location.reload()" style="background:#e8632a;color:#fff;border:none;padding:10px 24px;border-radius:6px;cursor:pointer;font-size:14px;">Retry</button></div>';
+  });
 });
 </script>
 
