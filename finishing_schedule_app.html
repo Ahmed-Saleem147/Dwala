@@ -442,7 +442,7 @@ body.viewer-mode .upload-card { display:none !important; }
 .ow-badge.sns { background:rgba(156,163,175,0.2); color:#6B7280; }
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 </head>
 <body>
 
@@ -827,13 +827,14 @@ let STATE;
 var firebaseConfig = {
   apiKey: "AIzaSyB0h8cZu2hxC8yZlGVm-hIDu9mRmQ1z40Q",
   authDomain: "duala-fa902.firebaseapp.com",
+  databaseURL: "https://duala-fa902-default-rtdb.firebaseio.com",
   projectId: "duala-fa902",
   storageBucket: "duala-fa902.firebasestorage.app",
   messagingSenderId: "376388614294",
   appId: "1:376388614294:web:6daa695ccfb74dc577eab7"
 };
 firebase.initializeApp(firebaseConfig);
-var db = firebase.firestore();
+var db = firebase.database();
 
 var STATE = buildState();
 
@@ -844,7 +845,7 @@ function migrateState(s) {
 }
 
 function save() {
-  db.collection('app').doc('state').set({ data: STATE }).catch(function(e){ console.error('Save error:',e); });
+  db.ref('state').set(STATE).catch(function(e){ console.error('Save error:',e); });
   var t = document.getElementById('save-toast');
   t.classList.add('show'); setTimeout(function(){t.classList.remove('show');}, 1800);
 }
@@ -1145,7 +1146,7 @@ var DAILY_PHOTOS = [];
 var DAILY_PHOTOS = [];
 
 function saveDailyPhotos() {
-  db.collection('app').doc('daily_photos').set({ data: DAILY_PHOTOS }).catch(function(e){ console.error('Save photos error:',e); });
+  db.ref('daily_photos').set(DAILY_PHOTOS).catch(function(e){ console.error('Save photos error:',e); });
 }
 
 function handleDailyUpload(input) {
@@ -1285,7 +1286,7 @@ var OTHER_WORKS = [];
 var OW_PENDING_PHOTOS = [];
 
 function saveOtherWorks() {
-  db.collection('app').doc('other_works').set({ data: OTHER_WORKS }).catch(function(e){ console.error('Save other works error:',e); });
+  db.ref('other_works').set(OTHER_WORKS).catch(function(e){ console.error('Save other works error:',e); });
 }
 
 function handleOwPhotos(input) {
@@ -1479,26 +1480,26 @@ window.addEventListener('load', function() {
   var overlay = document.getElementById('loading-overlay');
 
   Promise.all([
-    db.collection('app').doc('state').get(),
-    db.collection('app').doc('daily_photos').get(),
-    db.collection('app').doc('other_works').get()
-  ]).then(function(results) {
-    var stateDoc = results[0], dpDoc = results[1], owDoc = results[2];
-    if (stateDoc.exists) { STATE = migrateState(stateDoc.data().data); } else { STATE = buildState(); save(); }
-    if (dpDoc.exists) DAILY_PHOTOS = dpDoc.data().data || [];
-    if (owDoc.exists) OTHER_WORKS = owDoc.data().data || [];
+    db.ref('state').once('value'),
+    db.ref('daily_photos').once('value'),
+    db.ref('other_works').once('value')
+  ]).then(function(snaps) {
+    var stateVal = snaps[0].val(), dpVal = snaps[1].val(), owVal = snaps[2].val();
+    if (stateVal) { STATE = migrateState(stateVal); } else { STATE = buildState(); save(); }
+    if (dpVal) DAILY_PHOTOS = dpVal;
+    if (owVal) OTHER_WORKS = owVal;
     overlay.style.display = 'none';
     renderDashboard();
 
-    // Live updates for all viewers
-    db.collection('app').doc('state').onSnapshot(function(doc) {
-      if (doc.exists) { STATE = migrateState(doc.data().data); refreshCurrentScreen(); }
+    // Live updates for all devices
+    db.ref('state').on('value', function(snap) {
+      var v = snap.val(); if (v) { STATE = migrateState(v); refreshCurrentScreen(); }
     });
-    db.collection('app').doc('daily_photos').onSnapshot(function(doc) {
-      if (doc.exists) { DAILY_PHOTOS = doc.data().data || []; if (document.querySelector('#screen-photos.active')) renderPhotos(); }
+    db.ref('daily_photos').on('value', function(snap) {
+      var v = snap.val(); if (v) { DAILY_PHOTOS = v; if (document.querySelector('#screen-photos.active')) renderPhotos(); }
     });
-    db.collection('app').doc('other_works').onSnapshot(function(doc) {
-      if (doc.exists) { OTHER_WORKS = doc.data().data || []; if (document.querySelector('#screen-other.active')) renderOtherWorks(); }
+    db.ref('other_works').on('value', function(snap) {
+      var v = snap.val(); if (v) { OTHER_WORKS = v; if (document.querySelector('#screen-other.active')) renderOtherWorks(); }
     });
   }).catch(function(err) {
     console.error('Firebase load error:', err);
