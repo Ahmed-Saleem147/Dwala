@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dwala Finishing Schedule</title>
+<title>Duala Finishing Schedule</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
 
@@ -445,7 +445,7 @@ body.viewer-mode .upload-card { display:none !important; }
 <body>
 
 <nav class="nav">
-  <div class="nav-brand">DWALA <span>// FINISHING</span></div>
+  <div class="nav-brand">DUALA <span>// FINISHING</span></div>
   <div class="nav-tabs">
     <button class="main-tab active" data-screen="dashboard" onclick="showScreen('dashboard')">Dashboard</button>
     <button class="main-tab" data-screen="units" onclick="showScreen('units')">Units</button>
@@ -455,6 +455,7 @@ body.viewer-mode .upload-card { display:none !important; }
     <button class="main-tab" data-screen="other" onclick="showScreen('other')">Other Works</button>
   </div>
   <button id="admin-nav-btn" class="admin-nav-btn" onclick="showAdminModal()">&#128274; Admin</button>
+  <button id="settings-nav-btn" class="admin-nav-btn" onclick="showSettings()" style="display:none;margin-left:4px;">&#9881;</button>
 </nav>
 <div id="viewer-banner" style="display:none;background:#F97316;color:#fff;text-align:center;padding:7px 12px;font-size:13px;font-weight:600;letter-spacing:0.5px;">
   👁 VIEW ONLY MODE — You are not logged in as admin
@@ -572,7 +573,7 @@ body.viewer-mode .upload-card { display:none !important; }
 <!-- BOSS VIEW -->
 <div id="screen-boss" class="screen">
   <div class="boss-hero">
-    <h2>Dwala — Site Summary</h2>
+    <h2>Duala — Site Summary</h2>
     <p id="boss-date"></p>
     <div class="boss-stats">
       <div class="boss-stat-big"><div class="boss-stat-big-val" id="boss-total-pct">–</div><div class="boss-stat-big-lbl">Overall</div></div>
@@ -992,15 +993,13 @@ function refreshUnitProgress(uid,tkey) {
 function handlePhoto(uid,tkey,idx,input) {
   const files=Array.from(input.files); if(!files.length) return;
   if(!STATE[uid][tkey][idx].photos) STATE[uid][tkey][idx].photos=[];
-  let done=0;
+  let done=0, total=files.length;
   files.forEach(function(file) {
-    const reader=new FileReader();
-    reader.onload=function(e) {
-      STATE[uid][tkey][idx].photos.push(e.target.result);
+    uploadFile(file, function(src) {
+      STATE[uid][tkey][idx].photos.push(src);
       done++;
-      if(done===files.length){stamp(uid,tkey,idx);save();renderTaskPhotos(uid,tkey,idx);}
-    };
-    reader.readAsDataURL(file);
+      if(done===total){stamp(uid,tkey,idx);save();renderTaskPhotos(uid,tkey,idx);}
+    }, function(err){ done++; alert('Upload failed: '+err); });
   });
   input.value='';
 }
@@ -1033,7 +1032,7 @@ function closeLightboxOuter(e) { if(e.target===document.getElementById('lightbox
 function shareWhatsApp() {
   const aP=blockPct('A'), bP=blockPct('B'), total=(aP+bP)/2;
   const date=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
-  let msg=`*DWALA FINISHING SCHEDULE*\n📅 ${date}\n\n`;
+  let msg=`*DUALA FINISHING SCHEDULE*\n📅 ${date}\n\n`;
   msg+=`📊 *Overall: ${Math.round(total*100)}%*\n`;
   msg+=`🔵 Block A: ${Math.round(aP*100)}%\n`;
   msg+=`🟢 Block B: ${Math.round(bP*100)}%\n\n`;
@@ -1135,19 +1134,18 @@ function handleDailyUpload(input) {
   var cap = document.getElementById('dp-caption').value.trim();
   var files = Array.from(input.files);
   if (!files.length) return;
-  var done = 0;
+  var done = 0, total = files.length;
   files.forEach(function(file) {
-    var reader = new FileReader();
-    reader.onload = function(e) {
-      DAILY_PHOTOS.unshift({ id: Date.now().toString(36) + Math.random().toString(36).slice(2), date: dateVal, caption: cap || file.name, src: e.target.result });
+    var fname = file.name;
+    uploadFile(file, function(src) {
+      DAILY_PHOTOS.unshift({ id: Date.now().toString(36) + Math.random().toString(36).slice(2), date: dateVal, caption: cap || fname, src: src });
       done++;
-      if (done === files.length) {
+      if (done === total) {
         saveDailyPhotos(); renderPhotos();
         input.value = ''; document.getElementById('dp-caption').value = '';
         var t = document.getElementById('save-toast'); t.classList.add('show'); setTimeout(function() { t.classList.remove('show'); }, 1800);
       }
-    };
-    reader.readAsDataURL(file);
+    }, function(err){ done++; alert('Upload failed: '+err); });
   });
 }
 
@@ -1194,6 +1192,75 @@ function openPhotoLightbox(src) {
 }
 
 
+// ─── CLOUDINARY UPLOAD ────────────────────────────────────────────────────────
+function getCldConfig() {
+  return {
+    cloud:  localStorage.getItem('dwala_cld_cloud')  || '',
+    preset: localStorage.getItem('dwala_cld_preset') || ''
+  };
+}
+function saveCloudinaryConfig() {
+  var cloud  = document.getElementById('cld-cloud').value.trim();
+  var preset = document.getElementById('cld-preset').value.trim();
+  if (!cloud || !preset) { document.getElementById('cld-status').textContent = 'Enter both fields.'; return; }
+  localStorage.setItem('dwala_cld_cloud',  cloud);
+  localStorage.setItem('dwala_cld_preset', preset);
+  document.getElementById('cld-status').innerHTML = '<span style="color:#16A34A">&#10003; Saved! Photos will now upload to Cloudinary.</span>';
+  setTimeout(function(){ document.getElementById('settings-modal').style.display='none'; }, 1200);
+}
+function clearCloudinaryConfig() {
+  localStorage.removeItem('dwala_cld_cloud');
+  localStorage.removeItem('dwala_cld_preset');
+  document.getElementById('cld-status').innerHTML = '<span style="color:#DC2626">Cloudinary disabled. Photos stored locally (limited space).</span>';
+}
+function showSettings() {
+  var cfg = getCldConfig();
+  document.getElementById('cld-cloud').value  = cfg.cloud;
+  document.getElementById('cld-preset').value = cfg.preset;
+  document.getElementById('cld-status').textContent = cfg.cloud ? ('Active: ' + cfg.cloud) : 'Not configured';
+  document.getElementById('settings-modal').style.display = 'flex';
+}
+
+// uploadFile: Cloudinary if configured, else compress-and-base64 fallback
+function uploadFile(file, onSuccess, onError) {
+  var cfg = getCldConfig();
+  if (cfg.cloud && cfg.preset) {
+    // Upload to Cloudinary
+    var fd = new FormData();
+    fd.append('file', file);
+    fd.append('upload_preset', cfg.preset);
+    fetch('https://api.cloudinary.com/v1_1/' + cfg.cloud + '/image/upload', { method:'POST', body:fd })
+      .then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function(data) { onSuccess(data.secure_url); })
+      .catch(function(e) { if(onError) onError(e.message); });
+  } else {
+    // Fallback: compress then base64
+    compressImage(file, onSuccess);
+  }
+}
+
+// Compress image via canvas before base64 storage
+function compressImage(file, callback) {
+  var img = new Image();
+  var url = URL.createObjectURL(file);
+  img.onload = function() {
+    var MAX = 1100, w = img.width, h = img.height;
+    if (w > MAX || h > MAX) {
+      if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+      else       { w = Math.round(w * MAX / h); h = MAX; }
+    }
+    var c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    c.getContext('2d').drawImage(img, 0, 0, w, h);
+    URL.revokeObjectURL(url);
+    callback(c.toDataURL('image/jpeg', 0.65));
+  };
+  img.onerror = function() { URL.revokeObjectURL(url); };
+  img.src = url;
+}
 // ─── OTHER WORKS ──────────────────────────────────────────────────────────────
 var OTHER_WORKS = [];
 try { var _ow = localStorage.getItem('dwala_other_works'); OTHER_WORKS = _ow ? JSON.parse(_ow) : []; } catch(e) { OTHER_WORKS = []; }
@@ -1208,16 +1275,14 @@ function handleOwPhotos(input) {
   var files = Array.from(input.files);
   OW_PENDING_PHOTOS = [];
   if (!files.length) { document.getElementById('ow-photo-count').textContent = ''; return; }
-  var done = 0;
+  var done = 0, total = files.length;
+  document.getElementById('ow-photo-count').textContent = 'Uploading...';
   files.forEach(function(file) {
-    var reader = new FileReader();
-    reader.onload = function(e) {
-      OW_PENDING_PHOTOS.push(e.target.result);
+    uploadFile(file, function(src) {
+      OW_PENDING_PHOTOS.push(src);
       done++;
-      if (done === files.length)
-        document.getElementById('ow-photo-count').textContent = done + ' photo' + (done > 1 ? 's' : '') + ' ready';
-    };
-    reader.readAsDataURL(file);
+      if (done === total) document.getElementById('ow-photo-count').textContent = done + ' photo' + (done > 1 ? 's' : '') + ' ready';
+    }, function(err){ done++; alert('Upload failed: '+err); });
   });
 }
 
@@ -1246,15 +1311,13 @@ function addOwPhoto(id, input) {
   var entry = OTHER_WORKS.find(function(e) { return e.id === id; });
   if (!entry) return;
   var files = Array.from(input.files);
-  var done = 0;
+  var done = 0, total = files.length;
   files.forEach(function(file) {
-    var reader = new FileReader();
-    reader.onload = function(e) {
-      entry.photos.push(e.target.result);
+    uploadFile(file, function(src) {
+      entry.photos.push(src);
       done++;
-      if (done === files.length) { saveOtherWorks(); renderOtherWorks(); }
-    };
-    reader.readAsDataURL(file);
+      if (done === total) { saveOtherWorks(); renderOtherWorks(); }
+    }, function(err){ done++; alert('Upload failed: '+err); });
   });
   input.value = '';
 }
@@ -1362,14 +1425,17 @@ function adminLogout() {
 
 function applyViewerMode(isViewer) {
   var btn = document.getElementById('admin-nav-btn');
+  var sBtn = document.getElementById('settings-nav-btn');
   if (isViewer) {
     document.body.classList.add('viewer-mode');
     document.getElementById('viewer-banner').style.display = 'block';
     if (btn) { btn.innerHTML = '&#128274; Admin'; btn.className = 'admin-nav-btn'; btn.onclick = function() { showAdminModal(); }; }
+    if (sBtn) sBtn.style.display = 'none';
   } else {
     document.body.classList.remove('viewer-mode');
     document.getElementById('viewer-banner').style.display = 'none';
     if (btn) { btn.innerHTML = '&#128275; Admin &#10003;'; btn.className = 'admin-nav-btn admin-active'; btn.onclick = function() { if (confirm('Log out of admin mode?')) adminLogout(); }; }
+    if (sBtn) sBtn.style.display = 'inline-flex';
   }
 }
 
@@ -1410,6 +1476,23 @@ window.addEventListener('load', function() {
     <button class="ow-add-btn" onclick="addOtherWork()">+ Add Entry</button>
   </div>
   <div id="ow-list" style="padding:0 16px 80px;"></div>
+</div>
+<!-- SETTINGS MODAL -->
+<div id="settings-modal" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.6);backdrop-filter:blur(6px);align-items:center;justify-content:center;">
+  <div class="auth-card" style="max-width:400px;">
+    <div style="font-size:28px;text-align:center;">&#9881;&#65039;</div>
+    <div class="auth-title">Photo Storage Settings</div>
+    <div class="auth-sub">Connect Cloudinary so photos upload to the cloud instead of the browser.</div>
+    <div style="background:#FEF3C7;border-radius:8px;padding:10px 12px;font-size:12px;color:#92400E;line-height:1.5;">
+      <strong>Setup:</strong> Create a free account at <strong>cloudinary.com</strong> → Settings → Upload → Upload presets → Add preset → set to <strong>Unsigned</strong> → Save
+    </div>
+    <input id="cld-cloud" type="text" class="auth-input" style="letter-spacing:normal;font-size:14px;text-align:left;" placeholder="Cloud Name  (e.g. mysite123)">
+    <input id="cld-preset" type="text" class="auth-input" style="letter-spacing:normal;font-size:14px;text-align:left;" placeholder="Upload Preset  (e.g. dwala_unsigned)">
+    <button class="auth-btn-primary" onclick="saveCloudinaryConfig()">&#10003; Save &amp; Enable</button>
+    <button class="auth-btn-secondary" onclick="clearCloudinaryConfig()" style="font-size:13px;">Clear / Disable Cloudinary</button>
+    <button class="auth-btn-secondary" onclick="document.getElementById(''settings-modal'').style.display=''none''">Cancel</button>
+    <div id="cld-status" style="font-size:12px;text-align:center;min-height:16px;"></div>
+  </div>
 </div>
 <!-- AUTH MODAL -->
 <div id="auth-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.65);backdrop-filter:blur(8px);align-items:center;justify-content:center;">
