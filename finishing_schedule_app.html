@@ -1490,15 +1490,15 @@ window.addEventListener('load', function() {
     overlay.style.display = 'none';
     renderDashboard();
 
-    // Live updates for all devices
+    // Live updates for viewers only — admin drives their own UI
     db.ref('state').on('value', function(snap) {
-      var v = snap.val(); if (v) { STATE = migrateState(v); refreshCurrentScreen(); }
+      var v = snap.val(); if (v && !SESSION_ADMIN) { STATE = migrateState(v); refreshCurrentScreen(); }
     });
     db.ref('daily_photos').on('value', function(snap) {
-      var v = snap.val(); if (v) { DAILY_PHOTOS = v; if (document.querySelector('#screen-photos.active')) renderPhotos(); }
+      var v = snap.val(); if (v && !SESSION_ADMIN) { DAILY_PHOTOS = v; if (document.querySelector('#screen-photos.active')) renderPhotos(); }
     });
     db.ref('other_works').on('value', function(snap) {
-      var v = snap.val(); if (v) { OTHER_WORKS = v; if (document.querySelector('#screen-other.active')) renderOtherWorks(); }
+      var v = snap.val(); if (v && !SESSION_ADMIN) { OTHER_WORKS = v; if (document.querySelector('#screen-other.active')) renderOtherWorks(); }
     });
   }).catch(function(err) {
     console.error('Firebase load error:', err);
