@@ -1499,10 +1499,27 @@ window.addEventListener('load', function() {
     db.ref('other_works').once('value')
   ]).then(function(snaps) {
     var stateVal = snaps[0].val(), dpVal = snaps[1].val(), owVal = snaps[2].val();
+    var migrated = false;
+
+    // ── One-time localStorage migration ──────────────────────────────────────
+    if (!localStorage.getItem('dwala_migrated_to_firebase')) {
+      try {
+        var lsState = localStorage.getItem('dwala_state_v2');
+        var lsDp    = localStorage.getItem('dwala_daily_photos');
+        var lsOw    = localStorage.getItem('dwala_other_works');
+        if (lsState && !stateVal) { stateVal = JSON.parse(lsState); db.ref('state').set(stateVal); }
+        if (lsDp   && !dpVal)    { dpVal    = JSON.parse(lsDp);    db.ref('daily_photos').set(dpVal); }
+        if (lsOw   && !owVal)    { owVal    = JSON.parse(lsOw);    db.ref('other_works').set(owVal); }
+        localStorage.setItem('dwala_migrated_to_firebase', '1');
+        migrated = true;
+      } catch(e) { console.warn('Migration error:', e); }
+    }
+
     if (stateVal) { STATE = migrateState(stateVal); } else { STATE = buildState(); save(); }
-    if (dpVal) DAILY_PHOTOS = dpVal;
-    if (owVal) OTHER_WORKS = owVal;
+    if (dpVal) DAILY_PHOTOS = Array.isArray(dpVal) ? dpVal : Object.values(dpVal);
+    if (owVal) OTHER_WORKS  = Array.isArray(owVal)  ? owVal  : Object.values(owVal);
     overlay.style.display = 'none';
+    if (migrated) { var t=document.getElementById('save-toast'); t.textContent='✓ Data restored'; t.classList.add('show'); setTimeout(function(){t.classList.remove('show');t.textContent='✓ Saved';},3000); }
     renderDashboard();
 
     // Live updates for viewers only — admin drives their own UI
@@ -1510,10 +1527,10 @@ window.addEventListener('load', function() {
       var v = snap.val(); if (v && !SESSION_ADMIN) { STATE = migrateState(v); refreshCurrentScreen(); }
     });
     db.ref('daily_photos').on('value', function(snap) {
-      var v = snap.val(); if (v && !SESSION_ADMIN) { DAILY_PHOTOS = v; if (document.querySelector('#screen-photos.active')) renderPhotos(); }
+      var v = snap.val(); if (v && !SESSION_ADMIN) { DAILY_PHOTOS = Array.isArray(v) ? v : Object.values(v); if (document.querySelector('#screen-photos.active')) renderPhotos(); }
     });
     db.ref('other_works').on('value', function(snap) {
-      var v = snap.val(); if (v && !SESSION_ADMIN) { OTHER_WORKS = v; if (document.querySelector('#screen-other.active')) renderOtherWorks(); }
+      var v = snap.val(); if (v && !SESSION_ADMIN) { OTHER_WORKS = Array.isArray(v) ? v : Object.values(v); if (document.querySelector('#screen-other.active')) renderOtherWorks(); }
     });
   }).catch(function(err) {
     console.error('Firebase load error:', err);
