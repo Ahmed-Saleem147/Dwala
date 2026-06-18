@@ -461,6 +461,7 @@ body.viewer-mode .upload-card { display:none !important; }
     <button class="main-tab" data-screen="boss" onclick="showScreen('boss')">Boss View</button>
     <button class="main-tab" data-screen="photos" onclick="showScreen('photos')">Photos</button>
     <button class="main-tab" data-screen="other" onclick="showScreen('other')">Other Works</button>
+    <button class="main-tab" data-screen="external" onclick="showScreen('external')">External Works</button>
   </div>
   <button id="admin-nav-btn" class="admin-nav-btn" onclick="showAdminModal()">&#128274; Admin</button>
   <button id="settings-nav-btn" class="admin-nav-btn" onclick="showSettings()" style="display:none;margin-left:4px;">&#9881;</button>
@@ -868,7 +869,7 @@ function showScreen(name) {
   if(name==='dashboard') renderDashboard();
   if(name==='units') renderUnitGrid('all');
   if(name==='report') renderReport();
-  if(name==='boss') renderBossView(); if(name==='photos') renderPhotos(); if(name==='other') renderOtherWorks();
+  if(name==='boss') renderBossView(); if(name==='photos') renderPhotos(); if(name==='other') renderOtherWorks(); if(name==='external') renderExternalWorks();
 }
 function showUnitsBlock(bl) { showScreen('units'); filterBlock(bl); }
 
@@ -1422,6 +1423,155 @@ function renderOtherWorks() {
     '</div>';
   }).join('');
 }
+// ─── EXTERNAL WORKS ───────────────────────────────────────────────────────────
+var EW_DEFS = [
+  { key: 'pavement',          label: 'Pavement',          tasks: ['Walkway', 'Road'] },
+  { key: 'landscape',         label: 'Landscape',          tasks: ['Landscape'] },
+  { key: 'water_tank_stand',  label: 'Water Tank Stand',   tasks: ['Water Tank Stand'] },
+  { key: 'septic_tank',       label: 'Septic Tank',        tasks: ['Septic Tank'] }
+];
+var EXTERNAL_WORKS = buildExternalWorks();
+
+function buildExternalWorks() {
+  var ew = {};
+  EW_DEFS.forEach(function(def) {
+    ew[def.key] = def.tasks.map(function(name) {
+      return { name: name, status: 'Not Started', pct: 0, notes: '', photos: [], lastUpdated: null };
+    });
+  });
+  return ew;
+}
+
+function normalizeEw(raw) {
+  var ew = {};
+  EW_DEFS.forEach(function(def) {
+    if (raw[def.key]) {
+      var arr = Array.isArray(raw[def.key]) ? raw[def.key] : Object.values(raw[def.key]);
+      ew[def.key] = arr.map(function(task) {
+        if (task && task.photos && !Array.isArray(task.photos)) task.photos = Object.values(task.photos);
+        if (task && !task.photos) task.photos = [];
+        return task;
+      });
+    } else {
+      ew[def.key] = def.tasks.map(function(name) { return { name: name, status: 'Not Started', pct: 0, notes: '', photos: [], lastUpdated: null }; });
+    }
+  });
+  return ew;
+}
+
+function saveExternalWorks() {
+  db.ref('external_works').set(EXTERNAL_WORKS).catch(function(e){ console.error('Save EW error:', e); });
+  var t = document.getElementById('save-toast'); t.classList.add('show'); setTimeout(function(){t.classList.remove('show');}, 1800);
+}
+
+function updateEwStatus(cat, idx, val) {
+  EXTERNAL_WORKS[cat][idx].status = val;
+  if (val === 'Complete') EXTERNAL_WORKS[cat][idx].pct = 100;
+  if (val === 'Not Started') EXTERNAL_WORKS[cat][idx].pct = 0;
+  EXTERNAL_WORKS[cat][idx].lastUpdated = Date.now();
+  saveExternalWorks();
+  var row = document.getElementById('ew-tr-' + cat + '-' + idx);
+  if (row) row.className = 'task-row ' + statusClass(val);
+  var pctEl = document.getElementById('ew-pct-' + cat + '-' + idx);
+  if (pctEl) pctEl.value = EXTERNAL_WORKS[cat][idx].pct;
+}
+
+function updateEwPct(cat, idx, val) {
+  EXTERNAL_WORKS[cat][idx].pct = Math.min(100, Math.max(0, parseInt(val) || 0));
+  EXTERNAL_WORKS[cat][idx].lastUpdated = Date.now();
+  saveExternalWorks();
+}
+
+function updateEwNotes(cat, idx, val) {
+  EXTERNAL_WORKS[cat][idx].notes = val;
+  EXTERNAL_WORKS[cat][idx].lastUpdated = Date.now();
+  saveExternalWorks();
+}
+
+function handleEwPhoto(cat, idx, input) {
+  var files = Array.from(input.files); if (!files.length) return;
+  if (!EXTERNAL_WORKS[cat][idx].photos) EXTERNAL_WORKS[cat][idx].photos = [];
+  var done = 0, total = files.length;
+  files.forEach(function(file) {
+    uploadFile(file, function(src) {
+      EXTERNAL_WORKS[cat][idx].photos.push(src);
+      done++;
+      if (done === total) { saveExternalWorks(); renderEwPhotos(cat, idx); }
+    }, function(err) { done++; alert('Upload failed: ' + err); });
+  });
+  input.value = '';
+}
+
+function renderEwPhotos(cat, idx) {
+  var strip = document.getElementById('ew-ps-' + cat + '-' + idx); if (!strip) return;
+  var photos = EXTERNAL_WORKS[cat][idx].photos || [];
+  strip.innerHTML = photos.map(function(src, pi) {
+    return '<div class="photo-strip-item">' +
+      '<img class="photo-thumb" src="' + src + '" onclick="openEwPhoto(\'' + cat + '\',' + idx + ',' + pi + ')">' +
+      (SESSION_ADMIN ? '<button class="photo-remove" onclick="removeEwPhoto(\'' + cat + '\',' + idx + ',' + pi + ')">✕</button>' : '') +
+      '</div>';
+  }).join('');
+}
+
+function removeEwPhoto(cat, idx, pi) {
+  EXTERNAL_WORKS[cat][idx].photos.splice(pi, 1);
+  saveExternalWorks(); renderEwPhotos(cat, idx);
+}
+
+function openEwPhoto(cat, idx, pi) {
+  var src = (EXTERNAL_WORKS[cat] && EXTERNAL_WORKS[cat][idx] && EXTERNAL_WORKS[cat][idx].photos || [])[pi];
+  if (src) openPhotoLightbox(src);
+}
+
+function renderExternalWorks() {
+  var el = document.getElementById('ew-content'); if (!el) return;
+  el.innerHTML = EW_DEFS.map(function(def) {
+    var tasks = EXTERNAL_WORKS[def.key] || [];
+    return '<div class="trade-card open" style="margin-bottom:16px;">' +
+      '<div class="trade-header" style="cursor:default;">' +
+        '<div class="trade-name">' + def.label.toUpperCase() + '</div>' +
+      '</div>' +
+      '<div class="trade-body">' +
+        tasks.map(function(tk, idx) {
+          var sc = statusClass(tk.status);
+          var lastUpd = tk.lastUpdated ? '<div class="task-timestamp">Updated ' + fmtTs(tk.lastUpdated) + '</div>' : '';
+          var photos = (tk.photos || []).map(function(src, pi) {
+            return '<div class="photo-strip-item">' +
+              '<img class="photo-thumb" src="' + src + '" onclick="openEwPhoto(\'' + def.key + '\',' + idx + ',' + pi + ')">' +
+              (SESSION_ADMIN ? '<button class="photo-remove" onclick="removeEwPhoto(\'' + def.key + '\',' + idx + ',' + pi + ')">✕</button>' : '') +
+              '</div>';
+          }).join('');
+          return (
+            '<div class="task-row ' + sc + '" id="ew-tr-' + def.key + '-' + idx + '">' +
+              '<div><div class="task-name">' + tk.name + '</div>' + lastUpd + '</div>' +
+              (SESSION_ADMIN ?
+                '<select class="status-select" onchange="updateEwStatus(\'' + def.key + '\',' + idx + ',this.value)">' +
+                  '<option' + (tk.status==='Not Started'?' selected':'') + '>Not Started</option>' +
+                  '<option' + (tk.status==='In Progress'?' selected':'') + '>In Progress</option>' +
+                  '<option' + (tk.status==='Complete'?' selected':'') + '>Complete</option>' +
+                '</select>' +
+                '<input type="number" class="pct-input" id="ew-pct-' + def.key + '-' + idx + '" min="0" max="100" value="' + Math.round(tk.pct) + '" onchange="updateEwPct(\'' + def.key + '\',' + idx + ',this.value)">'
+              : '<span class="ow-badge ' + sc + '">' + tk.status + '</span>') +
+            '</div>' +
+            '<div class="remarks-row">' +
+              '<input class="remarks-input" type="text" placeholder="Notes…" value="' + escHtml(tk.notes || '') + '"' +
+              (SESSION_ADMIN ? ' onchange="updateEwNotes(\'' + def.key + '\',' + idx + ',this.value)"' : ' disabled style="pointer-events:none;opacity:.6;"') + '>' +
+            '</div>' +
+            '<div class="photo-row">' +
+              (SESSION_ADMIN ?
+                '<input type="file" accept="image/*" multiple class="photo-file" id="ew-pf-' + def.key + '-' + idx + '" onchange="handleEwPhoto(\'' + def.key + '\',' + idx + ',this)">' +
+                '<label class="photo-label-btn" onclick="document.getElementById(\'ew-pf-' + def.key + '-' + idx + '\').click()">' +
+                ((tk.photos && tk.photos.length) ? '📷 Add more' : '📷 Add photos') + '</label>'
+              : '') +
+              '<div class="photo-strip" id="ew-ps-' + def.key + '-' + idx + '">' + photos + '</div>' +
+            '</div>'
+          );
+        }).join('') +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 var SESSION_ADMIN = false;
 var ADMIN_PIN = '1234'; // change this to your PIN
@@ -1482,6 +1632,7 @@ function refreshCurrentScreen() {
   else if (name==='boss') renderBossView();
   else if (name==='photos') renderPhotos();
   else if (name==='other') renderOtherWorks();
+  else if (name==='external') renderExternalWorks();
 }
 
 window.addEventListener('load', function() {
@@ -1496,9 +1647,10 @@ window.addEventListener('load', function() {
   Promise.all([
     db.ref('state').once('value'),
     db.ref('daily_photos').once('value'),
-    db.ref('other_works').once('value')
+    db.ref('other_works').once('value'),
+    db.ref('external_works').once('value')
   ]).then(function(snaps) {
-    var stateVal = snaps[0].val(), dpVal = snaps[1].val(), owVal = snaps[2].val();
+    var stateVal = snaps[0].val(), dpVal = snaps[1].val(), owVal = snaps[2].val(), ewVal = snaps[3].val();
     var migrated = false;
 
     // ── One-time localStorage migration ──────────────────────────────────────
@@ -1518,6 +1670,7 @@ window.addEventListener('load', function() {
     if (stateVal) { STATE = migrateState(stateVal); } else { STATE = buildState(); save(); }
     if (dpVal) DAILY_PHOTOS = Array.isArray(dpVal) ? dpVal : Object.values(dpVal);
     if (owVal) OTHER_WORKS  = Array.isArray(owVal)  ? owVal  : Object.values(owVal);
+    if (ewVal) EXTERNAL_WORKS = normalizeEw(ewVal); else { EXTERNAL_WORKS = buildExternalWorks(); saveExternalWorks(); }
     overlay.style.display = 'none';
     if (migrated) { var t=document.getElementById('save-toast'); t.textContent='✓ Data restored'; t.classList.add('show'); setTimeout(function(){t.classList.remove('show');t.textContent='✓ Saved';},3000); }
     renderDashboard();
@@ -1531,6 +1684,9 @@ window.addEventListener('load', function() {
     });
     db.ref('other_works').on('value', function(snap) {
       var v = snap.val(); if (v && !SESSION_ADMIN) { OTHER_WORKS = Array.isArray(v) ? v : Object.values(v); if (document.querySelector('#screen-other.active')) renderOtherWorks(); }
+    });
+    db.ref('external_works').on('value', function(snap) {
+      var v = snap.val(); if (v && !SESSION_ADMIN) { EXTERNAL_WORKS = normalizeEw(v); if (document.querySelector('#screen-external.active')) renderExternalWorks(); }
     });
   }).catch(function(err) {
     console.error('Firebase load error:', err);
@@ -1566,6 +1722,15 @@ window.addEventListener('load', function() {
   </div>
   <div id="ow-list" style="padding:0 16px 80px;"></div>
 </div>
+<!-- EXTERNAL WORKS -->
+<div id="screen-external" class="screen">
+  <div class="photos-hero" style="background:linear-gradient(135deg,#0f766e 0%,#134e4a 100%);">
+    <div class="photos-hero-title">External Works</div>
+    <div class="photos-hero-sub">Pavement · Landscape · Water Tank Stand · Septic Tank</div>
+  </div>
+  <div id="ew-content" style="padding:16px 16px 80px;max-width:700px;margin:0 auto;"></div>
+</div>
+
 <!-- SETTINGS MODAL -->
 <div id="settings-modal" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.6);backdrop-filter:blur(6px);align-items:center;justify-content:center;">
   <div class="auth-card" style="max-width:400px;">
