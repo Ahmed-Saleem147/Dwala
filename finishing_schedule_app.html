@@ -1424,150 +1424,125 @@ function renderOtherWorks() {
   }).join('');
 }
 // ─── EXTERNAL WORKS ───────────────────────────────────────────────────────────
-var EW_DEFS = [
-  { key: 'pavement',          label: 'Pavement',          tasks: ['Walkway', 'Road'] },
-  { key: 'landscape',         label: 'Landscape',          tasks: ['Landscape'] },
-  { key: 'water_tank_stand',  label: 'Water Tank Stand',   tasks: ['Water Tank Stand'] },
-  { key: 'septic_tank',       label: 'Septic Tank',        tasks: ['Septic Tank'] }
-];
-var EXTERNAL_WORKS = buildExternalWorks();
-
-function buildExternalWorks() {
-  var ew = {};
-  EW_DEFS.forEach(function(def) {
-    ew[def.key] = def.tasks.map(function(name) {
-      return { name: name, status: 'Not Started', pct: 0, notes: '', photos: [], lastUpdated: null };
-    });
-  });
-  return ew;
-}
-
-function normalizeEw(raw) {
-  var ew = {};
-  EW_DEFS.forEach(function(def) {
-    if (raw[def.key]) {
-      var arr = Array.isArray(raw[def.key]) ? raw[def.key] : Object.values(raw[def.key]);
-      ew[def.key] = arr.map(function(task) {
-        if (task && task.photos && !Array.isArray(task.photos)) task.photos = Object.values(task.photos);
-        if (task && !task.photos) task.photos = [];
-        return task;
-      });
-    } else {
-      ew[def.key] = def.tasks.map(function(name) { return { name: name, status: 'Not Started', pct: 0, notes: '', photos: [], lastUpdated: null }; });
-    }
-  });
-  return ew;
-}
+var EW_ITEM_LABELS = {
+  walkway: 'Pavement — Walkway', road: 'Pavement — Road',
+  landscape: 'Landscape', water_tank_stand: 'Water Tank Stand', septic_tank: 'Septic Tank'
+};
+var EXTERNAL_WORKS = [];
+var EW_PENDING_PHOTOS = [];
 
 function saveExternalWorks() {
   db.ref('external_works').set(EXTERNAL_WORKS).catch(function(e){ console.error('Save EW error:', e); });
   var t = document.getElementById('save-toast'); t.classList.add('show'); setTimeout(function(){t.classList.remove('show');}, 1800);
 }
 
-function updateEwStatus(cat, idx, val) {
-  EXTERNAL_WORKS[cat][idx].status = val;
-  if (val === 'Complete') EXTERNAL_WORKS[cat][idx].pct = 100;
-  if (val === 'Not Started') EXTERNAL_WORKS[cat][idx].pct = 0;
-  EXTERNAL_WORKS[cat][idx].lastUpdated = Date.now();
-  saveExternalWorks();
-  var row = document.getElementById('ew-tr-' + cat + '-' + idx);
-  if (row) row.className = 'task-row ' + statusClass(val);
-  var pctEl = document.getElementById('ew-pct-' + cat + '-' + idx);
-  if (pctEl) pctEl.value = EXTERNAL_WORKS[cat][idx].pct;
+function normalizeEw(raw) {
+  if (!raw) return [];
+  return Array.isArray(raw) ? raw : Object.values(raw);
 }
 
-function updateEwPct(cat, idx, val) {
-  EXTERNAL_WORKS[cat][idx].pct = Math.min(100, Math.max(0, parseInt(val) || 0));
-  EXTERNAL_WORKS[cat][idx].lastUpdated = Date.now();
-  saveExternalWorks();
-}
-
-function updateEwNotes(cat, idx, val) {
-  EXTERNAL_WORKS[cat][idx].notes = val;
-  EXTERNAL_WORKS[cat][idx].lastUpdated = Date.now();
-  saveExternalWorks();
-}
-
-function handleEwPhoto(cat, idx, input) {
-  var files = Array.from(input.files); if (!files.length) return;
-  if (!EXTERNAL_WORKS[cat][idx].photos) EXTERNAL_WORKS[cat][idx].photos = [];
+function handleEwUpload(input) {
+  var files = Array.from(input.files);
+  EW_PENDING_PHOTOS = [];
+  if (!files.length) { document.getElementById('ew-photo-count').textContent = ''; return; }
   var done = 0, total = files.length;
+  document.getElementById('ew-photo-count').textContent = 'Uploading...';
   files.forEach(function(file) {
     uploadFile(file, function(src) {
-      EXTERNAL_WORKS[cat][idx].photos.push(src);
+      EW_PENDING_PHOTOS.push(src);
       done++;
-      if (done === total) { saveExternalWorks(); renderEwPhotos(cat, idx); }
+      if (done === total) document.getElementById('ew-photo-count').textContent = done + ' photo' + (done > 1 ? 's' : '') + ' ready';
+    }, function(err) { done++; alert('Upload failed: ' + err); });
+  });
+}
+
+function addEwEntry() {
+  var item   = document.getElementById('ew-item').value;
+  var date   = document.getElementById('ew-date').value || new Date().toISOString().split('T')[0];
+  var status = document.getElementById('ew-status').value;
+  var notes  = document.getElementById('ew-notes').value.trim();
+  EXTERNAL_WORKS.unshift({ id: Date.now().toString(36) + Math.random().toString(36).slice(2), item: item, date: date, status: status, notes: notes, photos: EW_PENDING_PHOTOS.slice() });
+  EW_PENDING_PHOTOS = [];
+  document.getElementById('ew-notes').value = '';
+  document.getElementById('ew-file').value = '';
+  document.getElementById('ew-photo-count').textContent = '';
+  saveExternalWorks(); renderExternalWorks();
+}
+
+function addMoreEwPhoto(id, input) {
+  var entry = EXTERNAL_WORKS.find(function(e) { return e.id === id; });
+  if (!entry) return;
+  var files = Array.from(input.files), done = 0, total = files.length;
+  files.forEach(function(file) {
+    uploadFile(file, function(src) {
+      entry.photos.push(src); done++;
+      if (done === total) { saveExternalWorks(); renderExternalWorks(); }
     }, function(err) { done++; alert('Upload failed: ' + err); });
   });
   input.value = '';
 }
 
-function renderEwPhotos(cat, idx) {
-  var strip = document.getElementById('ew-ps-' + cat + '-' + idx); if (!strip) return;
-  var photos = EXTERNAL_WORKS[cat][idx].photos || [];
-  strip.innerHTML = photos.map(function(src, pi) {
-    return '<div class="photo-strip-item">' +
-      '<img class="photo-thumb" src="' + src + '" onclick="openEwPhoto(\'' + cat + '\',' + idx + ',' + pi + ')">' +
-      (SESSION_ADMIN ? '<button class="photo-remove" onclick="removeEwPhoto(\'' + cat + '\',' + idx + ',' + pi + ')">✕</button>' : '') +
-      '</div>';
-  }).join('');
+function deleteEwPhoto(id, pi) {
+  var entry = EXTERNAL_WORKS.find(function(e) { return e.id === id; });
+  if (entry) { entry.photos.splice(pi, 1); saveExternalWorks(); renderExternalWorks(); }
 }
 
-function removeEwPhoto(cat, idx, pi) {
-  EXTERNAL_WORKS[cat][idx].photos.splice(pi, 1);
-  saveExternalWorks(); renderEwPhotos(cat, idx);
+function openEwPhoto(id, pi) {
+  var entry = EXTERNAL_WORKS.find(function(e) { return e.id === id; });
+  if (entry && entry.photos[pi]) openPhotoLightbox(entry.photos[pi]);
 }
 
-function openEwPhoto(cat, idx, pi) {
-  var src = (EXTERNAL_WORKS[cat] && EXTERNAL_WORKS[cat][idx] && EXTERNAL_WORKS[cat][idx].photos || [])[pi];
-  if (src) openPhotoLightbox(src);
+function deleteEwEntry(id) {
+  if (!confirm('Delete this entry?')) return;
+  EXTERNAL_WORKS = EXTERNAL_WORKS.filter(function(e) { return e.id !== id; });
+  saveExternalWorks(); renderExternalWorks();
+}
+
+function updateEwEntryStatus(id, val) {
+  var entry = EXTERNAL_WORKS.find(function(e) { return e.id === id; });
+  if (entry) { entry.status = val; saveExternalWorks(); renderExternalWorks(); }
 }
 
 function renderExternalWorks() {
-  var el = document.getElementById('ew-content'); if (!el) return;
-  el.innerHTML = EW_DEFS.map(function(def) {
-    var tasks = EXTERNAL_WORKS[def.key] || [];
-    return '<div class="trade-card open" style="margin-bottom:16px;">' +
-      '<div class="trade-header" style="cursor:default;">' +
-        '<div class="trade-name">' + def.label.toUpperCase() + '</div>' +
+  var uploadCard = document.getElementById('ew-upload-card');
+  if (uploadCard) uploadCard.style.display = SESSION_ADMIN ? 'block' : 'none';
+  var el = document.getElementById('ew-list'); if (!el) return;
+  if (!EXTERNAL_WORKS.length) {
+    el.innerHTML = '<div class="photos-empty"><div class="photos-empty-icon">🏗️</div>No entries yet.<br>Use the form above to add updates.</div>';
+    return;
+  }
+  el.innerHTML = EXTERNAL_WORKS.map(function(entry) {
+    var sc = entry.status === 'Complete' ? 'sc' : entry.status === 'In Progress' ? 'sip' : 'sns';
+    var dateLabel = new Date(entry.date + 'T12:00:00').toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
+    var itemLabel = EW_ITEM_LABELS[entry.item] || entry.item;
+    var photos = (entry.photos || []).map(function(src, pi) {
+      return '<div class="photo-strip-item">' +
+        '<img class="photo-thumb" src="' + src + '" onclick="openEwPhoto(\'' + entry.id + '\',' + pi + ')">' +
+        (SESSION_ADMIN ? '<button class="photo-remove" onclick="deleteEwPhoto(\'' + entry.id + '\',' + pi + ')">✕</button>' : '') +
+        '</div>';
+    }).join('');
+    return '<div class="ow-card ' + sc + '">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">' +
+        '<div style="flex:1;">' +
+          '<div style="font-weight:700;font-size:15px;color:var(--text);margin-bottom:4px;">' + escHtml(itemLabel) + '</div>' +
+          '<span class="ow-badge ' + sc + '">' + entry.status + '</span>' +
+          '<span style="font-size:12px;color:var(--text-mid);margin-left:8px;">' + dateLabel + '</span>' +
+        '</div>' +
+        (SESSION_ADMIN ?
+          '<div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">' +
+            '<label style="cursor:pointer;background:var(--orange);color:#fff;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:600;white-space:nowrap;">📷 Add<input type="file" accept="image/*" multiple style="display:none" onchange="addMoreEwPhoto(\'' + entry.id + '\',this)"></label>' +
+            '<button onclick="deleteEwEntry(\'' + entry.id + '\')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:20px;padding:4px;line-height:1;">✕</button>' +
+          '</div>' : '') +
       '</div>' +
-      '<div class="trade-body">' +
-        tasks.map(function(tk, idx) {
-          var sc = statusClass(tk.status);
-          var lastUpd = tk.lastUpdated ? '<div class="task-timestamp">Updated ' + fmtTs(tk.lastUpdated) + '</div>' : '';
-          var photos = (tk.photos || []).map(function(src, pi) {
-            return '<div class="photo-strip-item">' +
-              '<img class="photo-thumb" src="' + src + '" onclick="openEwPhoto(\'' + def.key + '\',' + idx + ',' + pi + ')">' +
-              (SESSION_ADMIN ? '<button class="photo-remove" onclick="removeEwPhoto(\'' + def.key + '\',' + idx + ',' + pi + ')">✕</button>' : '') +
-              '</div>';
-          }).join('');
-          return (
-            '<div class="task-row ' + sc + '" id="ew-tr-' + def.key + '-' + idx + '">' +
-              '<div><div class="task-name">' + tk.name + '</div>' + lastUpd + '</div>' +
-              (SESSION_ADMIN ?
-                '<select class="status-select" onchange="updateEwStatus(\'' + def.key + '\',' + idx + ',this.value)">' +
-                  '<option' + (tk.status==='Not Started'?' selected':'') + '>Not Started</option>' +
-                  '<option' + (tk.status==='In Progress'?' selected':'') + '>In Progress</option>' +
-                  '<option' + (tk.status==='Complete'?' selected':'') + '>Complete</option>' +
-                '</select>' +
-                '<input type="number" class="pct-input" id="ew-pct-' + def.key + '-' + idx + '" min="0" max="100" value="' + Math.round(tk.pct) + '" onchange="updateEwPct(\'' + def.key + '\',' + idx + ',this.value)">'
-              : '<span class="ow-badge ' + sc + '">' + tk.status + '</span>') +
-            '</div>' +
-            '<div class="remarks-row">' +
-              '<input class="remarks-input" type="text" placeholder="Notes…" value="' + escHtml(tk.notes || '') + '"' +
-              (SESSION_ADMIN ? ' onchange="updateEwNotes(\'' + def.key + '\',' + idx + ',this.value)"' : ' disabled style="pointer-events:none;opacity:.6;"') + '>' +
-            '</div>' +
-            '<div class="photo-row">' +
-              (SESSION_ADMIN ?
-                '<input type="file" accept="image/*" multiple class="photo-file" id="ew-pf-' + def.key + '-' + idx + '" onchange="handleEwPhoto(\'' + def.key + '\',' + idx + ',this)">' +
-                '<label class="photo-label-btn" onclick="document.getElementById(\'ew-pf-' + def.key + '-' + idx + '\').click()">' +
-                ((tk.photos && tk.photos.length) ? '📷 Add more' : '📷 Add photos') + '</label>'
-              : '') +
-              '<div class="photo-strip" id="ew-ps-' + def.key + '-' + idx + '">' + photos + '</div>' +
-            '</div>'
-          );
-        }).join('') +
+      (entry.notes ? '<div style="margin-top:8px;font-size:14px;color:var(--text-mid);">' + escHtml(entry.notes) + '</div>' : '') +
+      '<div style="margin-top:8px;">' +
+        '<select onchange="updateEwEntryStatus(\'' + entry.id + '\',this.value)" ' + (!SESSION_ADMIN ? 'disabled' : '') + ' style="border:1.5px solid #e5e5e5;border-radius:8px;padding:5px 8px;font-size:13px;color:var(--text);background:#fff;' + (!SESSION_ADMIN ? 'pointer-events:none;opacity:.6;' : '') + '">' +
+          '<option' + (entry.status==='Not Started'?' selected':'') + '>Not Started</option>' +
+          '<option' + (entry.status==='In Progress'?' selected':'') + '>In Progress</option>' +
+          '<option' + (entry.status==='Complete'?' selected':'') + '>Complete</option>' +
+        '</select>' +
       '</div>' +
+      (photos ? '<div class="photo-strip" style="margin-top:10px;">' + photos + '</div>' : '') +
     '</div>';
   }).join('');
 }
@@ -1670,7 +1645,7 @@ window.addEventListener('load', function() {
     if (stateVal) { STATE = migrateState(stateVal); } else { STATE = buildState(); save(); }
     if (dpVal) DAILY_PHOTOS = Array.isArray(dpVal) ? dpVal : Object.values(dpVal);
     if (owVal) OTHER_WORKS  = Array.isArray(owVal)  ? owVal  : Object.values(owVal);
-    if (ewVal) EXTERNAL_WORKS = normalizeEw(ewVal); else { EXTERNAL_WORKS = buildExternalWorks(); saveExternalWorks(); }
+    if (ewVal) EXTERNAL_WORKS = normalizeEw(ewVal);
     overlay.style.display = 'none';
     if (migrated) { var t=document.getElementById('save-toast'); t.textContent='✓ Data restored'; t.classList.add('show'); setTimeout(function(){t.classList.remove('show');t.textContent='✓ Saved';},3000); }
     renderDashboard();
@@ -1728,7 +1703,32 @@ window.addEventListener('load', function() {
     <div class="photos-hero-title">External Works</div>
     <div class="photos-hero-sub">Pavement · Landscape · Water Tank Stand · Septic Tank</div>
   </div>
-  <div id="ew-content" style="padding:16px 16px 80px;max-width:700px;margin:0 auto;"></div>
+  <div class="upload-card" id="ew-upload-card">
+    <h3 style="margin:0 0 12px;font-size:16px;font-weight:700;color:var(--text)">Add Work Entry</h3>
+    <select id="ew-item" class="ow-status-sel" style="width:100%;margin-bottom:8px;font-size:14px;">
+      <option value="walkway">Pavement — Walkway</option>
+      <option value="road">Pavement — Road</option>
+      <option value="landscape">Landscape</option>
+      <option value="water_tank_stand">Water Tank Stand</option>
+      <option value="septic_tank">Septic Tank</option>
+    </select>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
+      <input type="date" id="ew-date" class="ow-input" style="flex:1;min-width:130px;">
+      <select id="ew-status" class="ow-status-sel">
+        <option value="Not Started">Not Started</option>
+        <option value="In Progress" selected>In Progress</option>
+        <option value="Complete">Complete</option>
+      </select>
+    </div>
+    <input type="text" id="ew-notes" class="ow-input" placeholder="Notes / description…" style="margin-top:8px;">
+    <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <button class="upload-file-btn" onclick="document.getElementById('ew-file').click()">📷 Add Photos</button>
+      <input type="file" accept="image/*" multiple id="ew-file" style="display:none" onchange="handleEwUpload(this)">
+      <span id="ew-photo-count" style="font-size:12px;color:var(--text-mid);"></span>
+    </div>
+    <button class="ow-add-btn" onclick="addEwEntry()">+ Add Entry</button>
+  </div>
+  <div id="ew-list" style="padding:0 16px 80px;"></div>
 </div>
 
 <!-- SETTINGS MODAL -->
